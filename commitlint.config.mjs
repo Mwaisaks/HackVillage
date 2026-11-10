@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 // Conventional Commits per CONTRIBUTING.md — scopes from the documented set.
 // Scope is optional for repo-level commits (docs:, chore:); when present it
 // must come from the enum.
@@ -24,7 +25,7 @@ export default {
     "scope-enum": [
       2,
       "always",
-      ["escrow", "payout", "profiles", "events", "auth", "db", "contracts", "ui", "api", "docs", "ci"],
+      ["escrow", "payout", "profiles", "events", "auth", "db", "contracts", "ui", "api", "docs", "ci", "agent", "paypal"],
     ],
     "scope-empty": [1, "never"], // warn: prefer a scope, allow repo-level commits without one
   },
