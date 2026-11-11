@@ -3,16 +3,19 @@ import {
   ProposeBatchButton,
   SyncBatchButton,
 } from "@/components/payout/paypal-controls";
+import { PayoutAgentPanel, ReconcilePanel } from "@/components/payout/payout-agent-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
+import { latestPayoutAgentRun, latestReconcileRun } from "@/services/agent/payout-agent";
 import { buildPayoutPlan } from "@/services/payout/paypal-payouts";
 
 /**
  * Organiser payout console for PayPal-rail events (HACKATHON.md F3): the
  * deterministic pre-flight, per-member lines, and the propose → approve →
- * PayPal batch flow. F4's payout agent explains these issues here.
+ * PayPal batch flow. F4's payout agent explains these issues and proposes
+ * the batch; the organiser approves.
  */
 export async function PayPalPayoutPanel({ eventId }: { eventId: string }) {
   const [plan, batch] = await Promise.all([
@@ -34,6 +37,9 @@ export async function PayPalPayoutPanel({ eventId }: { eventId: string }) {
   const money = (minor: number) => formatMoney(minor, plan.currency);
 
   if (batch) {
+    const agentSummary = proposalSummary(batch.proposal);
+    const settledOrSent = ["SUBMITTED", "PARTIAL", "SUCCEEDED"].includes(batch.status);
+    const reconcile = settledOrSent ? await latestReconcileRun(batch.id) : null;
     return (
       <Card className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -46,6 +52,12 @@ export async function PayPalPayoutPanel({ eventId }: { eventId: string }) {
           {money(batch.totalMinor)} to {batch.payouts.length} team members in one PayPal batch
           {batch.paypalBatchId ? ` (PayPal ${batch.paypalBatchId})` : ""}. The platform pays PayPal&apos;s fees.
         </CardDescription>
+        {agentSummary ? (
+          <div className="rounded-control border border-ink/15 bg-ink/5 p-3 text-sm">
+            <span className="mb-1 block text-xs font-bold text-muted uppercase">Payout agent&apos;s proposal</span>
+            {agentSummary}
+          </div>
+        ) : null}
         <PayoutTable
           rows={batch.payouts.map((p) => ({
             key: p.id,
@@ -60,9 +72,12 @@ export async function PayPalPayoutPanel({ eventId }: { eventId: string }) {
         {batch.status === "PROPOSED" ? <ApproveBatchControls batchId={batch.id} total={money(batch.totalMinor)} /> : null}
         {batch.status === "SUBMITTED" || batch.status === "PARTIAL" ? <SyncBatchButton batchId={batch.id} /> : null}
         {batch.lastError ? <p className="text-xs text-muted">{batch.lastError}</p> : null}
+        {settledOrSent ? <ReconcilePanel batchId={batch.id} run={reconcile} /> : null}
       </Card>
     );
   }
+
+  const agentRun = await latestPayoutAgentRun(eventId);
 
   return (
     <Card className="space-y-4">
@@ -100,9 +115,21 @@ export async function PayPalPayoutPanel({ eventId }: { eventId: string }) {
       <p className="text-sm text-muted">
         Total {money(plan.totalMinor)} of {money(plan.poolMinor)} available in the funded pool.
       </p>
-      <ProposeBatchButton eventId={eventId} disabled={!plan.ok} />
+      <PayoutAgentPanel eventId={eventId} run={agentRun} canRun />
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted">Propose without the agent</summary>
+        <div className="mt-2">
+          <ProposeBatchButton eventId={eventId} disabled={!plan.ok} />
+        </div>
+      </details>
     </Card>
   );
+}
+
+function proposalSummary(proposal: unknown): string | null {
+  if (!proposal || typeof proposal !== "object" || !("summary" in proposal)) return null;
+  const summary = (proposal as { summary: unknown }).summary;
+  return typeof summary === "string" ? summary : null;
 }
 
 function PayoutTable({
