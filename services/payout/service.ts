@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { prisma } from "@/lib/db";
 import { getPaystackPort, type PayoutMethod, type RecipientInput } from "@/lib/ports/paystack";
 import { enqueue } from "@/lib/queue";
@@ -122,6 +123,11 @@ export async function announceWinners(input: AnnounceInput): Promise<void> {
   const membership = event.org.members[0];
   if (!membership || membership.role === "MEMBER") {
     throw new PayoutError("Only organization admins can announce winners.", "FORBIDDEN");
+  }
+  // PayPal-rail events pay every member through one PayPal batch (F3), never
+  // through the leader-only Paystack path (HACKATHON.md decisions 1 and 5).
+  if (event.rail === "PAYPAL") {
+    throw new PayoutError("PayPal hackathons pay winners through the PayPal payout flow.", "WRONG_STATE");
   }
   if (event.status !== "JUDGING") {
     throw new PayoutError(
@@ -357,6 +363,11 @@ export async function executePayout(payoutId: string): Promise<ExecuteResult> {
     include: { winner: { include: { event: { select: { title: true } } } } },
   });
   if (!payout) return { outcome: "not-found" };
+  // PayPal rows (amountKes 0, recipientCode "") never reach a Paystack transfer.
+  if (payout.rail === "PAYPAL") {
+    console.error(`[payout] executePayout refused PayPal-rail payout ${payout.id}`);
+    return { outcome: "not-found" };
+  }
   if (payout.status === "SUCCEEDED" || payout.status === "PROCESSING") {
     return { outcome: "duplicate" };
   }
@@ -633,6 +644,8 @@ export async function confirmMilestone(
   if (!winner) return { outcome: "wrong-state" };
   const membership = winner.event.org.members[0];
   if (!membership || membership.role === "MEMBER") return { outcome: "forbidden" };
+  // PayPal events pay 100% on the day: there is no milestone tranche.
+  if (winner.event.rail === "PAYPAL") return { outcome: "not-required" };
 
   if (!winner.milestoneRequired || !winner.milestone) return { outcome: "not-required" };
   if (winner.milestone.confirmedAt) return { outcome: "wrong-state" };
@@ -719,6 +732,7 @@ export async function adminRetryPayout(adminId: string, payoutId: string): Promi
 
   const payout = await prisma.payout.findUnique({ where: { id: payoutId } });
   if (!payout) return { outcome: "not-found" };
+  if (payout.rail === "PAYPAL") return { outcome: "not-found" };
   if (payout.status === "SUCCEEDED") return { outcome: "duplicate" };
 
   // Provider-truth gate (audit remediation): before re-driving, verify the
@@ -834,6 +848,8 @@ export async function sweepStuckPayouts(): Promise<number> {
   const threshold = new Date(Date.now() - 10 * 60 * 1000);
   const stuck = await prisma.payout.findMany({
     where: {
+      // Paystack rows only: PayPal rows are reconciled against their batch.
+      rail: "PAYSTACK",
       status: { in: ["QUEUED", "FAILED", "PROCESSING"] },
       queuedAt: { lt: threshold },
     },
@@ -921,7 +937,7 @@ export async function sweepStuckPayouts(): Promise<number> {
  */
 export async function healVaultStates(): Promise<number> {
   const candidates = await prisma.vaultState.findMany({
-    where: { chainState: "LOCKED", event: { status: "WINNERS_ANNOUNCED" } },
+    where: { chainState: "LOCKED", event: { status: "WINNERS_ANNOUNCED", rail: "PAYSTACK" } },
     select: { eventId: true },
     take: 50,
   });

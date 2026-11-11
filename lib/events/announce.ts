@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
@@ -7,6 +8,7 @@ import { sendNotification } from "@/lib/notifications/send";
 import { newPrizeVerifiedHackathonEmail } from "@/lib/notifications/templates/events";
 import { isRealAccountEmail } from "@/lib/seo/indexable";
 import { appUrl } from "@/lib/url";
+import { formatMoney } from "@/lib/money";
 import { formatKes } from "@/lib/utils";
 
 /** In-app notification type; also how a builder is marked as already told. */
@@ -89,7 +91,8 @@ export async function announceHackathonToBuilders(eventId: string): Promise<numb
       registrationDeadline: true,
       venueType: true,
       location: true,
-      prizes: { select: { amountKes: true } },
+      currency: true,
+      prizes: { select: { amountKes: true, amountMinor: true } },
     },
   });
   if (!event) return 0;
@@ -97,7 +100,10 @@ export async function announceHackathonToBuilders(eventId: string): Promise<numb
   const template = newPrizeVerifiedHackathonEmail({
     eventTitle: event.title,
     eventUrl: appUrl(`/hackathons/${event.slug}`),
-    prizePool: formatKes(event.prizes.reduce((sum, prize) => sum + prize.amountKes, 0)),
+    prizePool:
+      event.currency === "KES"
+        ? formatKes(event.prizes.reduce((sum, prize) => sum + prize.amountKes, 0))
+        : formatMoney(event.prizes.reduce((sum, prize) => sum + (prize.amountMinor ?? 0), 0), event.currency),
     dates: formatEventDates(event.startsAt, event.endsAt),
     venue: event.venueType === "ONLINE" ? "Online" : (event.location ?? "Kenya"),
     registrationCloses: dayFormat.format(event.registrationDeadline),

@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { prisma } from "@/lib/db";
 import { chainStateReflects, getChainPort, type ChainPort } from "@/lib/ports/chain";
 import { enqueue } from "@/lib/queue";
@@ -41,7 +42,9 @@ export async function reconcileLedger(chainOverride?: ChainPort): Promise<Reconc
 
   // 1. Every LOCKED-or-beyond vault has a DEPOSIT_LOCKED entry.
   const vaults = await prisma.vaultState.findMany({
-    where: { chainState: { in: ["LOCKED", "HALF_RELEASED", "SETTLED"] } },
+    // Paystack rail only: PayPal vaults carry no Polygon attestations yet
+    // (HACKATHON.md cut list item 3) and hold amountKes 0.
+    where: { chainState: { in: ["LOCKED", "HALF_RELEASED", "SETTLED"] }, event: { rail: "PAYSTACK" } },
     select: { eventId: true, chainState: true },
   });
   for (const vault of vaults) {
@@ -76,7 +79,7 @@ export async function reconcileLedger(chainOverride?: ChainPort): Promise<Reconc
 
   // 3. Every SUCCEEDED payout has its ledger entry (per winner+tranche).
   const payouts = await prisma.payout.findMany({
-    where: { status: "SUCCEEDED" },
+    where: { status: "SUCCEEDED", rail: "PAYSTACK" },
     select: {
       id: true,
       winnerId: true,
