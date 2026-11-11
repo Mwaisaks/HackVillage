@@ -97,6 +97,32 @@ This fork adds the following.
 2. 50/50 tranches for PayPal events (pay 100% on the day).
 3. Polygon attestations for PayPal events.
 
+## Decisions (locked 11 Nov 2026)
+1. **`*Kes` fields on PayPal rows hold 0.** Every money computation branches on
+   `rail`. Anything that rejects or misreports a 0 amount (`tranchePlanFor`,
+   `reconcile.ts`, attestations) is guarded so PayPal rows never reach it.
+2. **Organiser funding is a pledge.** USD events never touch `Deposit`;
+   `initiateDeposit` rejects PayPal-rail events. `Deposit` gets no `rail` column.
+3. **Overpayments and refunds:** alert admins and refund by hand. No automatic refunds.
+4. **Render:** a bare build is deployed early (Wed 11 Nov, by 13:00 EAT), before F2
+   is finished, to verify the pg-boss worker and register the PayPal webhook.
+5. **PayPal events pay 100% on the day** (single INSTANT tranche). 50/50 stays
+   KES-only. `advanceVaultAfter` and `confirmMilestone` stay unchanged for KES;
+   PayPal events settle through a separate PayPal-path settle function.
+6. **F3 schema lands in the F1 migration** so the money tables migrate once:
+   `PayoutBatch` (its id is the PayPal `sender_batch_id`), `Payout.recipientUserId`,
+   `Payout.payoutHandle`. PayPal idempotency key: `{winnerId}:{userId}:{tranche}`.
+   `Payout.recipientCode` is `""` on PayPal rows.
+7. **Split re-validation at announce time** is a pure function that returns
+   structured issues; F4's agent explains them.
+8. **`formatMoney(minor, currency)`** is used only on demo-path screens.
+9. **Webhook replay key** for PayPal is the PayPal event id (`WH-…`).
+10. **Go-live race:** `recordPledgeFunded` locks the event row (`SELECT … FOR UPDATE`)
+    before summing funded pledges, so concurrent captures lock the vault exactly once.
+11. **F1/F2 test scope:** three-sponsor go-live, parallel-capture race, duplicate
+    capture / replayed webhook, wrong amount, bad signature, KES suites still green.
+    Pledge manager UI is a plain table with copyable links until F5.
+
 ## Invariants kept from upstream (non-negotiable)
 - Idempotent money paths: unique keys, conditional claims, webhook replay guards.
   Retries never double-pay.
@@ -156,9 +182,11 @@ AI_MODEL=
 - Credits
 
 ## Status log (update as you go)
-- [ ] Setup: fork runs locally in simulation mode
-- [ ] F1 PayPal rail
-- [ ] F2 Sponsor pledges
+- [x] Setup: fork runs locally in simulation mode
+- [x] F1 PayPal rail (Orders, Payouts and webhook verification in the port;
+      migration `11_paypal_rail` also carries the F3 schema per decision 6)
+- [x] F2 Sponsor pledges (verified end to end in simulation: three sponsors →
+      LIVE + LOCKED. Polygon attestations are skipped for PayPal events, cut list item 3)
 - [ ] F3 Per-member payouts
 - [ ] F4 Payout agent
 - [ ] F5 AG Grid dashboard
