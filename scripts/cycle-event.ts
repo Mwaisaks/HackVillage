@@ -22,7 +22,8 @@ import { DEFAULT_RUBRIC } from "@/lib/judging/compute";
 import { computeEventResults } from "@/services/judging/results";
 
 async function main(): Promise<void> {
-  const slug = process.argv[2] ?? "fintech-for-matatu-culture";
+  // First non-flag argument: pnpm 11 forwards a literal "--" before script args.
+  const slug = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "fintech-for-matatu-culture";
   const event = await prisma.event.findFirst({
     where: { slug },
     include: {

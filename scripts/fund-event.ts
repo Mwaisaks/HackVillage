@@ -16,7 +16,8 @@ import { initiateDeposit } from "@/services/escrow/deposits";
 import { payLink } from "@/services/escrow/pledges";
 
 async function main(): Promise<void> {
-  const slug = process.argv[2];
+  // First non-flag argument: pnpm 11 forwards a literal "--" before script args.
+  const slug = process.argv.slice(2).find((a) => !a.startsWith("--"));
   if (!slug) {
     console.error("Usage: npm run dev:fund -- <event-slug>");
     process.exit(1);
