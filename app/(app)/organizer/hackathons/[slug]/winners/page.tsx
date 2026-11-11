@@ -1,7 +1,10 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { MilestoneConfirmer } from "@/components/payout/milestone-confirmer";
+import { PayPalPayoutPanel } from "@/components/payout/paypal-payout-panel";
+import { formatMoney } from "@/lib/money";
 import { WinnersAnnouncer } from "@/components/payout/winners-announcer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -105,10 +108,12 @@ export default async function EventWinnersPage({
         <WinnersAnnouncer
           eventId={event.id}
           poolKes={poolKes}
+          paypal={event.rail === "PAYPAL"}
           prizes={event.prizes.map((prize) => ({
             place: prize.place,
             label: prize.label,
             amountKes: prize.amountKes,
+            display: event.rail === "PAYPAL" ? formatMoney(prize.amountMinor ?? 0, event.currency) : undefined,
             milestoneRequired: prize.milestoneRequired,
           }))}
           teams={event.teams.map((team) => {
@@ -125,7 +130,9 @@ export default async function EventWinnersPage({
         />
       ) : null}
 
-      {announced ? (
+      {announced && event.rail === "PAYPAL" ? <PayPalPayoutPanel eventId={event.id} /> : null}
+
+      {announced && event.rail !== "PAYPAL" ? (
         <>
           <Card>
             <CardTitle>Winners &amp; Payouts</CardTitle>
