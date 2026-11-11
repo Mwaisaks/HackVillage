@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
@@ -5,11 +6,18 @@ import { getChainPort } from "@/lib/ports/chain";
 import { getPaystackPort } from "@/lib/ports/paystack";
 
 /**
- * Liveness/readiness probe (no auth — uptime monitors and load balancers
- * poll it). Reports component status only: no versions, hosts, or secret
- * presence beyond the already-public port modes. 200 when the app can serve
- * real traffic (database reachable, queue schema present, payment and chain
- * ports resolvable), 503 otherwise.
+ * Health probe (no auth — uptime monitors and load balancers poll it).
+ *
+ * GET /api/health          → liveness only: 200 with no database work. This
+ *                            is what the free-tier uptime pinger hits every
+ *                            few minutes to keep the Render service (and the
+ *                            in-process pg-boss worker) awake cheaply.
+ * GET /api/health?full=1   → readiness: database reachable, queue schema
+ *                            present, payment and chain ports resolvable;
+ *                            200 when healthy, 503 otherwise.
+ *
+ * Reports component status only: no versions, hosts, or secret presence
+ * beyond the already-public port modes.
  */
 export const dynamic = "force-dynamic";
 
@@ -19,6 +27,11 @@ interface ComponentHealth {
   queue: "ok" | "down";
   paystackMode: string;
   chainMode: string;
+  uptime: number;
+}
+
+interface Liveness {
+  ok: true;
   uptime: number;
 }
 
@@ -52,7 +65,11 @@ function portMode(read: () => string): string {
   }
 }
 
-export async function GET(): Promise<NextResponse<ComponentHealth>> {
+export async function GET(request: Request): Promise<NextResponse<ComponentHealth | Liveness>> {
+  if (new URL(request.url).searchParams.get("full") !== "1") {
+    return NextResponse.json({ ok: true, uptime: Math.floor(process.uptime()) });
+  }
+
   const [db, queue] = await Promise.all([databaseOk(), queueOk()]);
 
   // Port getters never reach the network (simulation fallbacks are in-process).

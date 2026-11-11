@@ -1,3 +1,4 @@
+<!-- Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka -->
 # Go-Live Checklist (v1.0 Launch)
 
 The gate before the first production event. Every box is verified in a real environment — staging-verified items are marked.
@@ -6,7 +7,7 @@ The gate before the first production event. Every box is verified in a real envi
 > environment — no boxes ticked by this work):
 > - Security headers shipped in `next.config.ts`: CSP, HSTS (2y, preload), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `frame-ancestors 'none'`; `X-Powered-By` off.
 > - Coverage gate wired: `pnpm test:coverage` runs in CI with thresholds on `services/escrow/**` + `services/payout/**` (floor 75 lines/95 functions, ratcheting toward 90 — plan §14).
-> - Health endpoint live at `GET /api/health` (db + queue probes, port modes, uptime; 200/503).
+> - Health endpoint live at `GET /api/health` (liveness, no DB) and `GET /api/health?full=1` (db + queue probes, port modes, uptime; 200/503).
 > - Rate limiting is DB-backed (`RateLimitBucket`) with per-IP secondary limits on auth actions; mutation API routes throttled 30/h/user.
 > - Sentry wired (DSN-gated no-op until `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN` are set — feeds the §4 Sentry box).
 > - Script guards: dev/ops scripts refuse non-localhost `DATABASE_URL` without `--allow-prod`.
