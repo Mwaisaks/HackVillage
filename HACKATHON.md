@@ -122,6 +122,13 @@ This fork adds the following.
 11. **F1/F2 test scope:** three-sponsor go-live, parallel-capture race, duplicate
     capture / replayed webhook, wrong amount, bad signature, KES suites still green.
     Pledge manager UI is a plain table with copyable links until F5.
+12. **Zero spend hosting:** Render free web service, Neon free Postgres via
+    `DATABASE_URL` (Render's free DB expires mid-judging), no paid add-ons.
+    An external uptime pinger hits `GET /api/health` (liveness, no DB work) to
+    keep the service and its in-process pg-boss worker awake;
+    `/api/health?full=1` is the deep readiness check.
+13. **AI provider for F4: Google Gemini via its free API** (`AI_PROVIDER=gemini`,
+    model in `AI_MODEL`, key in `AI_API_KEY`).
 
 ## Invariants kept from upstream (non-negotiable)
 - Idempotent money paths: unique keys, conditional claims, webhook replay guards.
