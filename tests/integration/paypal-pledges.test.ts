@@ -120,12 +120,18 @@ describe("PayPal sponsor pledges (integration)", () => {
   });
 
   afterAll(async () => {
+    // Only this suite's rows: pledges of its own events.
+    const pledgeIds = (
+      await prisma.sponsorPledge.findMany({ where: { event: { orgId: { in: orgIds } } }, select: { id: true } })
+    ).map((p) => p.id);
+    await prisma.auditLog.deleteMany({ where: { entity: "SponsorPledge", entityId: { in: pledgeIds } } });
+    await prisma.webhookEvent.deleteMany({
+      where: { source: "PAYPAL", createdAt: { gte: suiteStartedAt }, reference: { contains: "WH-" } },
+    });
     for (const id of orgIds) {
       await prisma.organization.delete({ where: { id } }).catch(() => undefined);
     }
     await prisma.user.deleteMany({ where: { email: { contains: TEST_KEY } } });
-    await prisma.webhookEvent.deleteMany({ where: { source: "PAYPAL", createdAt: { gte: suiteStartedAt } } });
-    await prisma.auditLog.deleteMany({ where: { entity: "SponsorPledge", createdAt: { gte: suiteStartedAt } } });
     await prisma
       .$executeRawUnsafe(`DELETE FROM pgboss.job WHERE name IN ('hackathon.announce') AND created_on >= $1`, suiteStartedAt)
       .catch(() => undefined);
