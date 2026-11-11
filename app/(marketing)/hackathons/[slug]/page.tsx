@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -28,7 +29,10 @@ import { relativeDay, venueLabel, type ListingCard } from "@/lib/events/listing"
 import { getListingCards } from "@/lib/events/listing-data";
 import { PUBLIC_HACKATHON_WHERE } from "@/lib/events/visibility";
 import { breadcrumbSchema, eventSchema } from "@/lib/seo/schema";
+import { FundingBar } from "@/components/escrow/funding-bar";
+import { formatMoney } from "@/lib/money";
 import { formatKes } from "@/lib/utils";
+import { getFundingSummary } from "@/services/escrow/pledges";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -47,7 +51,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       venueType: true,
       location: true,
       isDemo: true,
-      prizes: { select: { amountKes: true } },
+      rail: true,
+      prizes: { select: { amountKes: true, amountMinor: true } },
     },
   });
   if (!event) return { title: "Hackathon Not Found", robots: { index: false } };
@@ -58,7 +63,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const venue = event.venueType === "ONLINE" ? "Online" : (event.location ?? "Kenya");
   // Long-tail description: dates + venue + pool mirror what people search for
   // ("hackathons in Nairobi September 2026", "KES prize hackathon").
-  const description = `${event.summary ?? event.title} ${formatEventDates(event.startsAt, event.endsAt)} · ${venue} · ${formatKes(poolKes)} prize pool, 100% escrowed and Prize Verified on HackVillage.`;
+  const poolText =
+    event.rail === "PAYPAL"
+      ? `${formatMoney(event.prizes.reduce((sum, prize) => sum + (prize.amountMinor ?? 0), 0), "USD")} prize pool, fully funded through PayPal`
+      : `${formatKes(poolKes)} prize pool, 100% escrowed`;
+  const description = `${event.summary ?? event.title} ${formatEventDates(event.startsAt, event.endsAt)} · ${venue} · ${poolText} and Prize Verified on HackVillage.`;
   return {
     title: event.title,
     description,
@@ -130,6 +139,12 @@ export default async function EventDetailPage({ params, searchParams }: PageProp
 
   const now = new Date();
   const poolKes = event.prizes.reduce((sum, prize) => sum + prize.amountKes, 0);
+  // PayPal-rail (USD) events carry amounts in amountMinor (decision 1).
+  const isPayPal = event.rail === "PAYPAL";
+  const poolLabel = isPayPal
+    ? formatMoney(event.prizes.reduce((sum, prize) => sum + (prize.amountMinor ?? 0), 0), event.currency)
+    : formatKes(poolKes);
+  const funding = isPayPal ? await getFundingSummary(event.id) : null;
   const open = registrationOpen(event, now);
   const verified = isPrizeVerified(event.status, event.prizeVerifiedAt);
   const categories = event.categories.filter(isCategory);
@@ -154,6 +169,7 @@ export default async function EventDetailPage({ params, searchParams }: PageProp
       id: prize.id,
       label: prize.label,
       amountKes: prize.amountKes,
+      display: isPayPal ? formatMoney(prize.amountMinor ?? 0, event.currency) : undefined,
       milestoneRequired: prize.milestoneRequired,
       winner: winner ? { team: winner.team.name, handle: winner.user.handle } : null,
       firstHalfPaid: Boolean(
@@ -275,7 +291,7 @@ export default async function EventDetailPage({ params, searchParams }: PageProp
       <div className="lp-frame lp-divided hkd-body">
         <DetailRail
           stats={[
-            { label: "Prize pool", value: formatKes(poolKes) },
+            { label: "Prize pool", value: poolLabel },
             { label: "Dates", value: formatEventDates(event.startsAt, event.endsAt) },
             { label: "Where", value: venueLabel(event) },
             { label: "Teams", value: `${teams} of ${event.maxTeams} places taken` },
@@ -314,13 +330,20 @@ export default async function EventDetailPage({ params, searchParams }: PageProp
             ) : null}
           </DetailSection>
 
-          <EscrowCallout poolKes={poolKes} verified={verified} />
+          {funding ? (
+            <DetailSection id="hkd-funding" title="Funded prize pool">
+              <FundingBar summary={funding} />
+            </DetailSection>
+          ) : (
+            <EscrowCallout poolKes={poolKes} verified={verified} />
+          )}
 
           <DetailSection id="hkd-prizes" title="Prizes">
             <PrizeTable prizes={prizes} />
             <p className="hkd-muted hkd-small">
-              Winners receive 50% instantly on the day; the rest releases on verified milestone
-              completion.
+              {isPayPal
+                ? "Winners are paid 100% on results day, each team member directly to their own PayPal account. The platform pays the fees."
+                : "Winners receive 50% instantly on the day; the rest releases on verified milestone completion."}
             </p>
           </DetailSection>
 

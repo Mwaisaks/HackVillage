@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { z } from "zod";
 
 import { parseCategoryList } from "@/lib/events/categories";
@@ -50,13 +51,28 @@ export const eventProblemSchema = z.object({
 const prizePlaceSchema = z.object({
   place: z.coerce.number().int().min(1).max(20),
   label: z.string().trim().min(2).max(60),
-  amountKes: z.coerce.number().int().min(1_000, "Each prize must be at least KES 1,000."),
+  /// Whole units of the event currency. The wire name predates USD events:
+  /// for a USD event this is dollars (stored as amountMinor, amountKes = 0).
+  amountKes: z.coerce.number().int().min(1, "Each prize needs an amount."),
   milestoneRequired: z.coerce.boolean().default(true),
 });
 
+/** KES events run on Paystack; USD events run on PayPal (HACKATHON.md F1). */
+export const PRIZE_CURRENCIES = ["KES", "USD"] as const;
+export type PrizeCurrency = (typeof PRIZE_CURRENCIES)[number];
+
 export const eventPrizesSchema = z.object({
+  currency: z.enum(PRIZE_CURRENCIES).default("KES"),
   prizes: z.array(prizePlaceSchema).min(1, "Add at least one prize place.").max(10),
 });
+
+/** Per-currency prize floor. Null when every prize clears it. */
+export function prizeAmountIssue(currency: PrizeCurrency, prizes: { amountKes: number }[]): string | null {
+  if (currency === "USD") {
+    return prizes.some((p) => p.amountKes < 10) ? "Each prize must be at least $10." : null;
+  }
+  return prizes.some((p) => p.amountKes < 1_000) ? "Each prize must be at least KES 1,000." : null;
+}
 
 export const eventSettingsSchema = z.object({
   maxTeams: z.coerce.number().int().min(2).max(200).default(20),
@@ -73,6 +89,10 @@ export const eventWizardSchema = eventBasicsSchema
   .refine((data) => data.startsAt < data.endsAt, {
     message: "The hackathon must end after it starts.",
     path: ["endsAt"],
+  })
+  .superRefine((data, ctx) => {
+    const issue = prizeAmountIssue(data.currency, data.prizes);
+    if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue, path: ["prizes"] });
   });
 
 /** Places must be unique (unique(eventId, place) is a DB constraint too). */
