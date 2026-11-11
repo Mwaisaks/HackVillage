@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { getPaystackPort, type PaystackPort } from "@/lib/ports/paystack";
@@ -113,7 +114,9 @@ export async function processPaystackWebhook(
 export async function reprocessStaleWebhookEvents(limit = 25): Promise<number> {
   const cutoff = new Date(Date.now() - 60 * 60 * 1000);
   const stale = await prisma.webhookEvent.findMany({
-    where: { processedAt: null, createdAt: { lt: cutoff } },
+    // Paystack events only: PayPal events have their own router
+    // (services/escrow/paypal-webhook.ts reprocessStalePayPalWebhookEvents).
+    where: { source: "PAYSTACK", processedAt: null, createdAt: { lt: cutoff } },
     orderBy: { createdAt: "asc" },
     take: limit,
   });

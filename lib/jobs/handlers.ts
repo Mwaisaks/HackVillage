@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Job } from "pg-boss";
 
 import { getQueue } from "@/lib/queue";
@@ -103,6 +104,9 @@ export async function registerJobs(): Promise<void> {
       const { reprocessStaleWebhookEvents } = await import("@/services/escrow/webhook");
       const reprocessed = await reprocessStaleWebhookEvents();
       if (reprocessed > 0) console.log(`[cron] reprocessed ${reprocessed} stale webhook event(s)`);
+      const { reprocessStalePayPalWebhookEvents } = await import("@/services/escrow/paypal-webhook");
+      const reprocessedPayPal = await reprocessStalePayPalWebhookEvents();
+      if (reprocessedPayPal > 0) console.log(`[cron] reprocessed ${reprocessedPayPal} stale PayPal webhook event(s)`);
 
       // Lifecycle: LIVE events past their start time become IN_PROGRESS.
       const { advanceStartedEvents } = await import("@/lib/events/status-jobs");
