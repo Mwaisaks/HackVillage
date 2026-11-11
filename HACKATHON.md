@@ -129,6 +129,7 @@ This fork adds the following.
     `/api/health?full=1` is the deep readiness check.
 13. **AI provider for F4: Groq via its free API** (`AI_PROVIDER=groq`, model in
     `AI_MODEL`, key in `AI_API_KEY`). Switched from Gemini on 11 Nov at the owner's request.
+    Model: `openai/gpt-oss-120b` (Groq retired Llama 3.3 70B for this key).
 
 ## Invariants kept from upstream (non-negotiable)
 - Idempotent money paths: unique keys, conditional claims, webhook replay guards.
@@ -199,6 +200,7 @@ AI_MODEL=
 - [x] F4 Payout agent (Groq tool calling over the pre-flight: explains flags, drafts
       reminders, proposes or holds; organiser approves; reconcile report after the batch.
       Rules-only fallback without a key or on provider failure. Runs logged to AuditLog)
-- [ ] F5 AG Grid dashboard
+- [x] F5 AG Grid dashboard (organiser `/organizer/hackathons/[slug]/money`, sponsor
+      `/fund/[payToken]/dashboard` with masked handles; filter, sort, CSV export)
 - [ ] Render deploy
 - [ ] README, video, Devpost submission
