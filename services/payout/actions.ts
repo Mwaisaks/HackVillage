@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -93,14 +94,19 @@ export async function announceWinnersAction(
     await announceWinners({ eventId: eventId.data, organizerId: user.id, placements });
     const event = await prisma.event.findUnique({
       where: { id: eventId.data },
-      select: { slug: true },
+      select: { slug: true, rail: true },
     });
     if (event) {
       revalidatePath(`/organizer/hackathons/${event.slug}`);
       revalidatePath(`/hackathons/${event.slug}`);
       revalidatePath("/hackathons");
     }
-    return { message: "Winners announced. The instant 50% payouts are on their way." };
+    return {
+      message:
+        event?.rail === "PAYPAL"
+          ? "Winners announced. Review the PayPal payout checks below, then approve the batch."
+          : "Winners announced. The instant 50% payouts are on their way.",
+    };
   } catch (error) {
     // The unique ({eventId, place}) constraint — a double-click announce.
     if (isUniqueViolation(error)) {

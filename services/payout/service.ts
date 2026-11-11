@@ -124,11 +124,6 @@ export async function announceWinners(input: AnnounceInput): Promise<void> {
   if (!membership || membership.role === "MEMBER") {
     throw new PayoutError("Only organization admins can announce winners.", "FORBIDDEN");
   }
-  // PayPal-rail events pay every member through one PayPal batch (F3), never
-  // through the leader-only Paystack path (HACKATHON.md decisions 1 and 5).
-  if (event.rail === "PAYPAL") {
-    throw new PayoutError("PayPal hackathons pay winners through the PayPal payout flow.", "WRONG_STATE");
-  }
   if (event.status !== "JUDGING") {
     throw new PayoutError(
       event.winners.length > 0
@@ -192,6 +187,30 @@ export async function announceWinners(input: AnnounceInput): Promise<void> {
     if (!team) {
       throw new PayoutError(`That team didn't submit for this hackathon.`, "WRONG_STATE");
     }
+  }
+
+  // PayPal-rail events (F3): every member is paid from one PayPal batch that
+  // an organiser approves later — never the leader-only Paystack path, and
+  // no recipient gate here (missing handles are pre-flight issues the payout
+  // agent explains). Shares the validation above.
+  if (event.rail === "PAYPAL") {
+    const { announcePayPalWinnerRows } = await import("@/services/payout/paypal-payouts");
+    try {
+      await announcePayPalWinnerRows({
+        eventId: event.id,
+        eventTitle: event.title,
+        eventSlug: event.slug,
+        placements: input.placements,
+        prizesByPlace: new Map(event.prizes.map((p) => [p.place, { amountMinor: p.amountMinor, currency: p.currency }])),
+        teamById,
+      });
+    } catch (error) {
+      if ((error as { code?: string })?.code === "P2002") {
+        throw new PayoutError("Winners are already announced for this hackathon.", "WRONG_STATE");
+      }
+      throw error;
+    }
+    return;
   }
 
   // Recipient gate: every placed team leader needs a verified recipient.

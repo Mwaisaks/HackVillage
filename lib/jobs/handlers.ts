@@ -134,6 +134,10 @@ export async function registerJobs(): Promise<void> {
       // Vault healing: recompute stuck WINNERS_ANNOUNCED vaults from payout facts.
       const healed = await payouts.healVaultStates();
       if (healed > 0) console.log(`[cron] healed ${healed} vault state(s)`);
+      // PayPal batches: re-drive held submits, poll in-flight items (F3).
+      const { sweepPayPalBatches } = await import("@/services/payout/paypal-payouts");
+      const polled = await sweepPayPalBatches();
+      if (polled > 0) console.log(`[cron] polled ${polled} PayPal payout batch(es)`);
     }
   });
 

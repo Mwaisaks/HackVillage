@@ -51,6 +51,8 @@ const serverEnvSchema = z.object({
     .transform((value) => value === "true"),
   /// USD pool floor for publishing a PayPal-rail event, in cents.
   MIN_PRIZE_POOL_USD_MINOR: z.coerce.number().int().positive().default(10_000),
+  /// Per-member PayPal share above which the payout agent flags for review ($5,000).
+  PAYOUT_REVIEW_THRESHOLD_USD_MINOR: z.coerce.number().int().positive().default(500_000),
 
   // Payout agent (HACKATHON.md F4) — provider and model chosen via env.
   AI_PROVIDER: z.string().optional(),

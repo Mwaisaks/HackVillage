@@ -36,7 +36,8 @@ export interface PayPalWebhookPayload {
     payout_item_id?: string;
     payout_batch_id?: string;
     transaction_status?: string;
-    payout_item?: { sender_item_id?: string };
+    payout_item?: { sender_item_id?: string; amount?: { value?: string } };
+    errors?: { name?: string };
   };
 }
 
@@ -170,8 +171,26 @@ async function routePayPalEvent(webhookEventId: string, payload: PayPalWebhookPa
     return;
   }
 
-  // PAYMENT.PAYOUTS-ITEM.* are handled by the payout engine (F3); until then
-  // they are retained for forensics and reconciliation.
+  if (eventType.startsWith("PAYMENT.PAYOUTS-ITEM.")) {
+    // Per-member payout item update (F3): same conditional writes as the poll.
+    const { applyPayoutItemStatus, refreshBatchStatus } = await import("@/services/payout/paypal-payouts");
+    const senderItemId = resource.payout_item?.sender_item_id ?? null;
+    await applyPayoutItemStatus({
+      payoutItemId: resource.payout_item_id ?? "",
+      senderItemId,
+      transactionStatus: resource.transaction_status ?? eventType.replace("PAYMENT.PAYOUTS-ITEM.", ""),
+      amountMinor: valueToMinor(resource.payout_item?.amount?.value),
+      errorName: resource.errors?.name ?? null,
+    });
+    if (senderItemId) {
+      const payout = await prisma.payout.findUnique({ where: { id: senderItemId }, select: { batchId: true } });
+      if (payout?.batchId) await refreshBatchStatus(payout.batchId);
+    }
+    await markProcessed(webhookEventId);
+    return;
+  }
+
+  // Other events are retained for forensics.
   await markProcessed(webhookEventId);
 }
 

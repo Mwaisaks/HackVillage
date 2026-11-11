@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 /**
  * Dev utility — drive the seeded fintech event through judging → winners →
  * payouts, exercising the real service paths in simulation mode.
@@ -56,6 +57,17 @@ async function main(): Promise<void> {
     }
   }
   console.log(`✓ ${event.judges.length} judge(s) finalized ${event.teams.length} team(s)`);
+
+  // PayPal-rail events (F3): stop here. The organiser announces on the
+  // winners page, the payout agent runs its checks, and a human approves
+  // the PayPal batch — none of that is scripted.
+  if (event.rail === "PAYPAL") {
+    const { appUrl } = await import("@/lib/url");
+    console.log("✓ PayPal event: judging finalised. Announce and pay from:");
+    console.log(`  ${appUrl(`/organizer/hackathons/${event.slug}/winners`)}`);
+    await prisma.$disconnect();
+    process.exit(0);
+  }
 
   // 3. Recipient for team leaders lacking one.
   for (const team of event.teams) {
