@@ -224,7 +224,7 @@ export async function buildPayoutPlan(eventId: string): Promise<EventPayoutPlan>
 
 // ── Propose / discard ────────────────────────────────────────────────────
 
-async function requireOrgAdmin(eventId: string, userId: string) {
+export async function requireOrgAdmin(eventId: string, userId: string) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     select: {
