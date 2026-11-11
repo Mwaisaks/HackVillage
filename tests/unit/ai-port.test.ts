@@ -6,7 +6,7 @@ import { AiPortError, OpenAICompatibleLive } from "@/lib/ports/ai";
 describe("OpenAICompatibleLive", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  const port = new OpenAICompatibleLive("groq", "llama-3.3-70b-versatile", "test-key", "https://api.groq.com/openai/v1");
+  const port = new OpenAICompatibleLive("groq", "openai/gpt-oss-120b", "test-key", "https://api.groq.com/openai/v1");
   const input = { messages: [{ role: "user" as const, content: "hi" }], tools: [] };
 
   it("sends a tool-calling request and parses tool calls", async () => {
@@ -34,7 +34,7 @@ describe("OpenAICompatibleLive", () => {
     });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.groq.com/openai/v1/chat/completions");
-    expect(JSON.parse(String(init.body))).toMatchObject({ model: "llama-3.3-70b-versatile", tool_choice: "auto" });
+    expect(JSON.parse(String(init.body))).toMatchObject({ model: "openai/gpt-oss-120b", tool_choice: "auto" });
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
   });
 
