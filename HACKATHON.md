@@ -196,7 +196,9 @@ AI_MODEL=
       LIVE + LOCKED. Polygon attestations are skipped for PayPal events, cut list item 3)
 - [x] F3 Per-member payouts (single tranche; announce → pre-flight → propose →
       organiser approves → one PayPal batch → per-item sync/webhooks → settle)
-- [ ] F4 Payout agent
+- [x] F4 Payout agent (Groq tool calling over the pre-flight: explains flags, drafts
+      reminders, proposes or holds; organiser approves; reconcile report after the batch.
+      Rules-only fallback without a key or on provider failure. Runs logged to AuditLog)
 - [ ] F5 AG Grid dashboard
 - [ ] Render deploy
 - [ ] README, video, Devpost submission
