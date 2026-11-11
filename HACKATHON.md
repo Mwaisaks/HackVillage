@@ -194,7 +194,8 @@ AI_MODEL=
       migration `11_paypal_rail` also carries the F3 schema per decision 6)
 - [x] F2 Sponsor pledges (verified end to end in simulation: three sponsors →
       LIVE + LOCKED. Polygon attestations are skipped for PayPal events, cut list item 3)
-- [ ] F3 Per-member payouts
+- [x] F3 Per-member payouts (single tranche; announce → pre-flight → propose →
+      organiser approves → one PayPal batch → per-item sync/webhooks → settle)
 - [ ] F4 Payout agent
 - [ ] F5 AG Grid dashboard
 - [ ] Render deploy
