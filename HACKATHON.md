@@ -127,8 +127,8 @@ This fork adds the following.
     An external uptime pinger hits `GET /api/health` (liveness, no DB work) to
     keep the service and its in-process pg-boss worker awake;
     `/api/health?full=1` is the deep readiness check.
-13. **AI provider for F4: Google Gemini via its free API** (`AI_PROVIDER=gemini`,
-    model in `AI_MODEL`, key in `AI_API_KEY`).
+13. **AI provider for F4: Groq via its free API** (`AI_PROVIDER=groq`, model in
+    `AI_MODEL`, key in `AI_API_KEY`). Switched from Gemini on 11 Nov at the owner's request.
 
 ## Invariants kept from upstream (non-negotiable)
 - Idempotent money paths: unique keys, conditional claims, webhook replay guards.
@@ -191,7 +191,7 @@ AI_MODEL=
 ## Status log (update as you go)
 - [x] Setup: fork runs locally in simulation mode
 - [x] F1 PayPal rail (Orders, Payouts and webhook verification in the port;
-      migration `11_paypal_rail` also carries the F3 schema per decision 6)
+      migration `9_7_paypal_rail` also carries the F3 schema per decision 6)
 - [x] F2 Sponsor pledges (verified end to end in simulation: three sponsors →
       LIVE + LOCKED. Polygon attestations are skipped for PayPal events, cut list item 3)
 - [x] F3 Per-member payouts (single tranche; announce → pre-flight → propose →

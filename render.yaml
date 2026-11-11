@@ -22,7 +22,7 @@ services:
       - key: PAYPAL_ENV
         value: sandbox
       - key: AI_PROVIDER
-        value: gemini
+        value: groq
       # Paystack (KES) stays simulated: the hackathon demo uses PayPal sandbox.
       - key: PAYSTACK_ALLOW_SIMULATION_IN_PROD
         value: "true"
