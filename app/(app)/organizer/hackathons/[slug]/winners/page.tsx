@@ -130,7 +130,7 @@ export default async function EventWinnersPage({
         />
       ) : null}
 
-      {announced && event.rail === "PAYPAL" ? <PayPalPayoutPanel eventId={event.id} /> : null}
+      {announced && event.rail === "PAYPAL" ? <PayPalPayoutPanel eventId={event.id} dashboardHref={`/organizer/hackathons/${event.slug}/money`} /> : null}
 
       {announced && event.rail !== "PAYPAL" ? (
         <>

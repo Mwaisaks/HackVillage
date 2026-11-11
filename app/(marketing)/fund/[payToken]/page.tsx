@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { FundingBar } from "@/components/escrow/funding-bar";
@@ -76,6 +77,10 @@ export default async function FundPledgePage({
       <Card>
         <FundingBar summary={summary} />
       </Card>
+
+      <Link href={`/fund/${payToken}/dashboard`} className="inline-block text-sm font-semibold text-ink-soft hover:underline">
+        See where the money goes: sponsor dashboard →
+      </Link>
 
       <p className="text-xs text-muted">
         PayPal sandbox demo. In production, pooled funds would be held by a licensed custody partner.

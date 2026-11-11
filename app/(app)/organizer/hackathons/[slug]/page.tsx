@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -161,6 +162,20 @@ export default async function EventCommandCenterPage({ params }: PageProps) {
             </Link>
             <Link href={`/organizer/hackathons/${event.slug}/media`}>
               <Button variant="secondary" arrow>Media Vault (48h)</Button>
+            </Link>
+          </div>
+        </Card>
+      )}
+
+      {event.rail === "PAYPAL" && (
+        <Card>
+          <CardTitle>Money Dashboard</CardTitle>
+          <CardDescription>
+            Every sponsor pledge and every member payout in one table, with filtering and CSV export.
+          </CardDescription>
+          <div className="mt-4">
+            <Link href={`/organizer/hackathons/${event.slug}/money`}>
+              <Button variant="secondary" arrow>Open Money Dashboard</Button>
             </Link>
           </div>
         </Card>

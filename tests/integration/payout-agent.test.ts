@@ -9,6 +9,7 @@ import {
   runReconcileAgent,
   sendAgentReminders,
 } from "@/services/agent/payout-agent";
+import { getMoneyDashboard, maskHandle } from "@/services/dashboard/money";
 import { announceWinners } from "@/services/payout/service";
 import { approvePayoutBatch, savePayPalHandle } from "@/services/payout/paypal-payouts";
 
@@ -147,6 +148,15 @@ describe("Payout agent (integration)", () => {
     const w = await createWorld("main", ["lead@pp.test", "m2@pp.test", undefined]);
     orgIds.push(w.org.id);
     await announceWinners({ eventId: w.event.id, organizerId: w.organizer.id, placements: [{ place: 1, teamId: w.team.id }] });
+    await prisma.sponsorPledge.create({
+      data: { eventId: w.event.id, sponsorName: "Acme", sponsorEmail: "acme@sponsor.test", amountMinor: 63_000, status: "FUNDED", fundedAt: new Date(), payToken: `${TEST_KEY}-tok` },
+    });
+    const planned = await getMoneyDashboard(w.event.id, "organizer");
+    expect(planned?.payouts.map((r) => [r.status, r.percent, r.amount, r.paypal])).toEqual([
+      ["PLANNED", 50, 300, "lead@pp.test"],
+      ["PLANNED", 30, 180, "m2@pp.test"],
+      ["PLANNED", 20, 120, "missing"],
+    ]);
     await prisma.submission.update({
       where: { id: w.submission.id },
       data: { splitDeclaration: [{ userId: w.leader.id, percent: 50 }, { userId: w.m2.id, percent: 30 }, { userId: w.m3.id, percent: 10 }] },
@@ -209,6 +219,18 @@ describe("Payout agent (integration)", () => {
     const report = await runReconcileAgent(batchId, w.organizer.id, null);
     expect(report.findings.map((f) => f.kind)).toEqual(["paid", "paid", "paid"]);
     expect(report.summary).toMatch(/all 3 payments/);
+
+    // F5 dashboard: organiser sees everything paid; the sponsor view is redacted.
+    const org = await getMoneyDashboard(w.event.id, "organizer");
+    expect(org?.totals).toMatchObject({ paidMinor: 60_000, membersPaid: 3, membersTotal: 3, fundedMinor: 63_000, inFlightMinor: 0 });
+    expect(org?.totals.minutesToPaid).not.toBeNull();
+    expect(org?.payouts.every((r) => r.status === "SUCCEEDED" && r.paypalStatus === "SUCCESS")).toBe(true);
+    expect(org?.pledges[0]).toMatchObject({ sponsor: "Acme", email: "acme@sponsor.test", amount: 630 });
+    const sponsor = await getMoneyDashboard(w.event.id, "sponsor");
+    expect(sponsor?.pledges[0]?.email).toBeNull();
+    expect(sponsor?.payouts.map((r) => r.paypal)).toEqual(["l•••@pp.test", "m•••@pp.test", "m•••@pp.test"]);
+    expect(sponsor?.payouts.every((r) => r.note === null && r.paypalItemId === null)).toBe(true);
+    expect(maskHandle("+254700000001")).toBe("•••0001");
 
     const actions = await prisma.auditLog.findMany({ where: { entityId: { in: [w.event.id, batchId] } }, select: { action: true } });
     expect(actions.map((a) => a.action)).toEqual(

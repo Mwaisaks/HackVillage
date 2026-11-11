@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   ApproveBatchControls,
   ProposeBatchButton,
@@ -17,7 +19,7 @@ import { buildPayoutPlan } from "@/services/payout/paypal-payouts";
  * PayPal batch flow. F4's payout agent explains these issues and proposes
  * the batch; the organiser approves.
  */
-export async function PayPalPayoutPanel({ eventId }: { eventId: string }) {
+export async function PayPalPayoutPanel({ eventId, dashboardHref }: { eventId: string; dashboardHref?: string }) {
   const [plan, batch] = await Promise.all([
     buildPayoutPlan(eventId),
     prisma.payoutBatch.findFirst({
@@ -73,6 +75,11 @@ export async function PayPalPayoutPanel({ eventId }: { eventId: string }) {
         {batch.status === "SUBMITTED" || batch.status === "PARTIAL" ? <SyncBatchButton batchId={batch.id} /> : null}
         {batch.lastError ? <p className="text-xs text-muted">{batch.lastError}</p> : null}
         {settledOrSent ? <ReconcilePanel batchId={batch.id} run={reconcile} /> : null}
+        {dashboardHref ? (
+          <Link href={dashboardHref} className="inline-block text-sm font-semibold text-ink-soft hover:underline">
+            Open the money dashboard →
+          </Link>
+        ) : null}
       </Card>
     );
   }
