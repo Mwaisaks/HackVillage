@@ -202,5 +202,5 @@ AI_MODEL=
       Rules-only fallback without a key or on provider failure. Runs logged to AuditLog)
 - [x] F5 AG Grid dashboard (organiser `/organizer/hackathons/[slug]/money`, sponsor
       `/fund/[payToken]/dashboard` with masked handles; filter, sort, CSV export)
-- [ ] Render deploy
+- [x] Render deploy (https://hackvillage-paypal.onrender.com; full payout path verified against the PayPal sandbox and Groq on 12 Nov)
 - [ ] README, video, Devpost submission
