@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   ApiError,
   CheckoutPaymentIntent,
+  CustomError,
   Client,
   Environment,
   OrdersController,
@@ -205,6 +206,8 @@ export function captureFromOrder(order: Order): CaptureResult | null {
 
 const SANDBOX_BASE = "https://api-m.sandbox.paypal.com";
 const TIMEOUT_MS = 15_000;
+/** Per attempt for Orders v2 calls through the SDK (retries above multiply it). */
+const SDK_TIMEOUT_MS = 10_000;
 
 // ── Live (sandbox) ───────────────────────────────────────────────────────
 
@@ -225,7 +228,25 @@ export class PayPalLive implements PayPalPort {
       },
       environment: Environment.Sandbox,
       // The SDK default is 0 (wait forever) — never acceptable on a money path.
-      timeout: TIMEOUT_MS,
+      timeout: SDK_TIMEOUT_MS,
+      httpClientOptions: {
+        timeout: SDK_TIMEOUT_MS,
+        // The generated defaults switch retries off entirely
+        // (maxNumberOfRetries 0 AND maximumRetryWaitTime 0), so both are set.
+        // POST is safe to retry here because every POST we send carries a
+        // PayPal-Request-Id, which PayPal treats as an idempotency key: a
+        // retried create or capture returns the original result instead of
+        // creating or capturing twice. Worst case ≈ 3 × 10s + 3s of backoff.
+        retryConfig: {
+          maxNumberOfRetries: 2,
+          retryInterval: 1,
+          backoffFactor: 2,
+          maximumRetryWaitTime: 5,
+          retryOnTimeout: true,
+          httpStatusCodesToRetry: [408, 429, 500, 502, 503, 504],
+          httpMethodsToRetry: ["GET", "POST"],
+        },
+      },
     });
     this.orders = new OrdersController(client);
   }
@@ -476,14 +497,26 @@ export function parsePayoutItem(raw: RawPayoutItem): PayoutItemStatus {
 
 function toPortError(operation: string, error: unknown): PayPalPortError {
   if (error instanceof PayPalPortError) return error;
-  if (error instanceof ApiError) {
-    const name = (error.result as { name?: string } | undefined)?.name;
+  // Every Orders v2 operation maps its errors to the typed CustomError, whose
+  // parsed payload is on `result` with PayPal's own field names (debug_id,
+  // not debugId). debug_id is what PayPal support needs to trace a failure.
+  if (error instanceof CustomError) {
+    const name = error.result?.name;
+    const issue = error.result?.details?.[0]?.issue;
+    const debugId = error.result?.debug_id;
     return new PayPalPortError(
-      `PayPal ${operation} failed (${error.statusCode}${name ? ` ${name}` : ""}).`,
+      `PayPal ${operation} failed (${error.statusCode}${name ? ` ${name}` : ""}${issue ? `/${issue}` : ""}${
+        debugId ? `, debug_id ${debugId}` : ""
+      }).`,
       "provider",
       error.statusCode,
       name
     );
+  }
+  // Statuses mapped to no typed model arrive as a bare ApiError: `result` is
+  // never parsed on that path, so only the status is reliable.
+  if (error instanceof ApiError) {
+    return new PayPalPortError(`PayPal ${operation} failed (${error.statusCode}).`, "provider", error.statusCode);
   }
   return new PayPalPortError(
     `PayPal ${operation} failed: ${error instanceof Error ? error.message : String(error)}`,
