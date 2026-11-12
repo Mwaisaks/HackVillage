@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { z } from "zod";
 
 /**
@@ -36,6 +37,27 @@ const serverEnvSchema = z.object({
     .string()
     .optional()
     .transform((value) => value === "true"),
+
+  // PayPal (HACKATHON.md F1). Sandbox only: the hackathon forbids live money.
+  // Absent client credentials switch the PayPal rail to dev simulation.
+  PAYPAL_ENV: z.literal("sandbox").default("sandbox"),
+  PAYPAL_CLIENT_ID: z.string().optional(),
+  PAYPAL_CLIENT_SECRET: z.string().optional(),
+  PAYPAL_WEBHOOK_ID: z.string().optional(),
+  // Explicit opt-in to run the PayPal SIMULATION port in production.
+  PAYPAL_ALLOW_SIMULATION_IN_PROD: z
+    .string()
+    .optional()
+    .transform((value) => value === "true"),
+  /// USD pool floor for publishing a PayPal-rail event, in cents.
+  MIN_PRIZE_POOL_USD_MINOR: z.coerce.number().int().positive().default(10_000),
+  /// Per-member PayPal share above which the payout agent flags for review ($5,000).
+  PAYOUT_REVIEW_THRESHOLD_USD_MINOR: z.coerce.number().int().positive().default(500_000),
+
+  // Payout agent (HACKATHON.md F4) — provider and model chosen via env.
+  AI_PROVIDER: z.string().optional(),
+  AI_API_KEY: z.string().optional(),
+  AI_MODEL: z.string().optional(),
 
   // Chain (optional — absent config switches attestations to simulation)
   SMART_CONTRACT_ADDRESS: z.string().optional(),

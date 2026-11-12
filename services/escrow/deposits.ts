@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { randomBytes } from "node:crypto";
 
 import { getEnv } from "@/lib/env";
@@ -51,6 +52,14 @@ export async function initiateDeposit(eventId: string, userId: string): Promise<
   });
 
   if (!event) throw new DepositError("Hackathon not found.", "NOT_FOUND");
+  // PayPal-rail (USD) events are funded by sponsor pledges, never through a
+  // Paystack Deposit (HACKATHON.md decision 2).
+  if (event.rail === "PAYPAL") {
+    throw new DepositError(
+      "This hackathon is funded through PayPal sponsor pledges.",
+      "WRONG_STATE"
+    );
+  }
   if (event.status !== "PENDING_DEPOSIT") {
     throw new DepositError(
       event.status === "DRAFT" ? "Publish the hackathon first." : "This hackathon is already funded.",
@@ -263,7 +272,7 @@ export async function recordChargeSuccess(input: {
 }
 
 /** Notifies the organizer and registered developers once a vault locks. */
-async function notifyEventLive(eventId: string): Promise<void> {
+export async function notifyEventLive(eventId: string): Promise<void> {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     select: {

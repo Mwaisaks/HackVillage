@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { prisma } from "@/lib/db";
 import { sendMail } from "@/lib/ports/mail";
 import { sendNotification } from "@/lib/notifications/send";
@@ -488,6 +489,8 @@ export async function resolveDispute(input: {
 
   const recipientCode = winner.user.profile?.payoutRecipientCode;
   if (!recipientCode) return { outcome: "released" };
+  // PayPal winners carry amountKes 0 and no milestone tranche (decision 5).
+  if (winner.amountKes <= 0) return { outcome: "released" };
 
   const { payoutIdempotencyKey, tranchePlanFor } = await import("@/services/payout/tranches");
   const { enqueue } = await import("@/lib/queue");

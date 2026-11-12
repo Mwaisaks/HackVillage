@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -79,6 +80,16 @@ export async function saveEventAction(
     return { error: parsed.error.issues[0]?.message ?? "Check the hackathon details and try again." };
   }
   const data = parsed.data;
+  // USD prizes run on the PayPal rail: amounts live in amountMinor and the
+  // *Kes field holds 0 (HACKATHON.md decision 1). PayPal pays 100% on the day.
+  const isUsd = data.currency === "USD";
+  const railFields = isUsd
+    ? ({ rail: "PAYPAL", currency: "USD" } as const)
+    : ({ rail: "PAYSTACK", currency: "KES" } as const);
+  const prizeRow = (prize: (typeof data.prizes)[number]) =>
+    isUsd
+      ? { place: prize.place, label: prize.label, amountKes: 0, amountMinor: prize.amountKes * 100, currency: "USD", milestoneRequired: false }
+      : { place: prize.place, label: prize.label, amountKes: prize.amountKes, milestoneRequired: prize.milestoneRequired };
 
   if (!placesAreUnique(data.prizes)) {
     return { error: "Prize places must be unique: 1st, 2nd, 3rd…" };
@@ -108,17 +119,12 @@ export async function saveEventAction(
           categories: data.categories,
           problemStatement: data.problemStatement,
           rules: data.rules || null,
+          ...railFields,
         },
       });
       await tx.prizeBreakdown.deleteMany({ where: { eventId: data.eventId } });
       await tx.prizeBreakdown.createMany({
-        data: data.prizes.map((prize) => ({
-          eventId: data.eventId!,
-          place: prize.place,
-          label: prize.label,
-          amountKes: prize.amountKes,
-          milestoneRequired: prize.milestoneRequired,
-        })),
+        data: data.prizes.map((prize) => ({ eventId: data.eventId!, ...prizeRow(prize) })),
       });
       await tx.eventRoleTag.deleteMany({ where: { eventId: data.eventId } });
       await tx.eventRoleTag.createMany({
@@ -159,16 +165,11 @@ export async function saveEventAction(
         problemStatement: data.problemStatement,
         rules: data.rules || null,
         status: "DRAFT",
+        ...railFields,
       },
     });
     await tx.prizeBreakdown.createMany({
-      data: data.prizes.map((prize) => ({
-        eventId: created.id,
-        place: prize.place,
-        label: prize.label,
-        amountKes: prize.amountKes,
-        milestoneRequired: prize.milestoneRequired,
-      })),
+      data: data.prizes.map((prize) => ({ eventId: created.id, ...prizeRow(prize) })),
     });
     if (data.rolesWanted.length > 0) {
       await tx.eventRoleTag.createMany({
@@ -197,6 +198,14 @@ export async function publishEventAction(eventId: string): Promise<EventActionSt
   if (!event) return { error: "Hackathon not found." };
 
   const poolKes = event.prizes.reduce((sum, prize) => sum + prize.amountKes, 0);
+  if (event.rail === "PAYPAL") {
+    // USD pool floor (KES floor does not apply: PayPal rows hold amountKes 0).
+    const poolMinor = event.prizes.reduce((sum, prize) => sum + (prize.amountMinor ?? 0), 0);
+    const minMinor = getEnv().MIN_PRIZE_POOL_USD_MINOR;
+    if (poolMinor < minMinor) {
+      return { error: `The prize pool must be at least $${(minMinor / 100).toLocaleString("en-US")}.` };
+    }
+  }
   const { ok, reason } = canPublishDraft(
     {
       title: event.title,
@@ -206,7 +215,8 @@ export async function publishEventAction(eventId: string): Promise<EventActionSt
       registrationDeadline: event.registrationDeadline,
       problemStatement: event.problemStatement,
       prizeCount: event.prizes.length,
-      poolKes,
+      // PayPal events passed the USD floor above; skip the KES floor.
+      poolKes: event.rail === "PAYPAL" ? Number.MAX_SAFE_INTEGER : poolKes,
     },
     getEnv().MIN_PRIZE_POOL_KES
   );

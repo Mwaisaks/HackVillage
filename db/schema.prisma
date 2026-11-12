@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 // HackVillage — baseline identity schema (Phase 0 of docs/BUILD_PLAN.md §6.1)
 // Events, escrow, payout, judging, and media models land in Phases 2–7.
 // Note: migrations and seeds live in db/ to match the structure documented in
@@ -122,6 +123,31 @@ enum LedgerEntryType {
 
 enum WebhookSource {
   PAYSTACK
+  PAYPAL
+}
+
+/// Which payment provider moves an event's money. KES events stay on
+/// Paystack; USD events use PayPal end to end (HACKATHON.md F1).
+enum PaymentRail {
+  PAYSTACK
+  PAYPAL
+}
+
+/// A sponsor's share of a PayPal-rail prize pool (HACKATHON.md F2).
+enum PledgeStatus {
+  PLEDGED
+  FUNDED
+  REFUNDED
+}
+
+/// One PayPal Payouts batch per approved disbursement (HACKATHON.md F3/F4).
+enum PayoutBatchStatus {
+  PROPOSED
+  APPROVED
+  SUBMITTED
+  SUCCEEDED
+  PARTIAL
+  FAILED
 }
 
 // ── Identity (Auth.js v5 adapter-compatible shapes) ───────────────────────
@@ -162,6 +188,7 @@ model User {
   judgeFeedback Feedback[] @relation("JudgeFeedback")
   judgingProgress JudgingProgress[] @relation("JudgeProgress")
   payoutsWon Winner[] @relation("PayoutWinners")
+  payoutsReceived Payout[] @relation("PayoutRecipients")
   endorsementsGiven Endorsement[] @relation("EndorsementJudge")
   endorsementsReceived Endorsement[] @relation("EndorsementDeveloper")
   portfolioItems PortfolioItem[] @relation("PortfolioItems")
@@ -330,6 +357,8 @@ model DeveloperProfile {
   // Paystack transfer recipient — required before a user can be marked a
   // winner (plan §6.1 invariant). Wired in Phase 5.
   payoutRecipientCode String?
+  /// PayPal rail: the member's own PayPal email or phone (no bank details).
+  paypalHandle String?
   // "MPESA" | "BANK" — promoted to an enum when the payout service lands.
   payoutMethod String?
   // Derived metric — recomputed by jobs, never client-writable.
@@ -363,6 +392,10 @@ model Event {
   // Keys from lib/events/categories.ts (AI, Web3, Fintech...), at most 3.
   categories String[] @default([])
   status EventStatus @default(DRAFT)
+  /// PAYSTACK (KES) or PAYPAL (USD). PayPal rows write 0 into *Kes fields
+  /// and carry their amounts in *Minor fields (HACKATHON.md decision 1).
+  rail PaymentRail @default(PAYSTACK)
+  currency String @default("KES")
   // Set by the escrow service when the vault locks (Phase 3).
   prizeVerifiedAt DateTime?
   // endsAt + 48h — enforced by the media job (Phase 7).
@@ -386,6 +419,8 @@ model Event {
   internshipTags InternshipTag[]
   introductions Introduction[]
   media MediaAsset[]
+  pledges SponsorPledge[]
+  payoutBatches PayoutBatch[]
 
   @@index([status, startsAt])
 }
@@ -399,6 +434,9 @@ model PrizeBreakdown {
   place Int
   label String
   amountKes Int
+  /// PayPal rail: the prize in minor units (US cents). Null on KES rows.
+  amountMinor Int?
+  currency String @default("KES")
   milestoneRequired Boolean @default(true)
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -509,6 +547,9 @@ model VaultState {
   eventId String @unique
   /// The pool portion only — the fee never enters the vault (ADR-012).
   amountKes Int
+  /// PayPal rail: the pool portion in minor units. Null on KES vaults.
+  amountMinor Int?
+  currency String @default("KES")
   contractAddress String?
   chainState VaultChainState @default(AWAITING)
   lockedAt DateTime?
@@ -674,6 +715,9 @@ model Winner {
   /// The team LEADER (ADR-013) — the single verified recipient per win.
   userId String
   amountKes Int
+  /// PayPal rail: the prize in minor units. Null on KES winners.
+  amountMinor Int?
+  currency String @default("KES")
   milestoneRequired Boolean @default(true)
   announcedAt DateTime @default(now())
 
@@ -697,17 +741,33 @@ model Payout {
   idempotencyKey String @unique
   paystackTransferCode String?
   paystackReference String?
+  /// Paystack recipient code. "" on PayPal rows (HACKATHON.md decision 6).
   recipientCode String
   status PayoutStatus @default(QUEUED)
   attemptCount Int @default(0)
   lastError String?
   queuedAt DateTime @default(now())
   paidAt DateTime?
+  rail PaymentRail @default(PAYSTACK)
+  currency String @default("KES")
+  /// PayPal rail: the member's share in minor units. Null on KES rows.
+  amountMinor Int?
+  /// PayPal rail: the team member this row pays (one row per member).
+  recipientUserId String?
+  /// PayPal rail: the member's PayPal email or phone, frozen at proposal time.
+  payoutHandle String?
+  batchId String?
+  /// PayPal payout_item_id, set once the batch is accepted.
+  paypalItemId String? @unique
+  paypalTransactionStatus String?
 
   winner Winner @relation(fields: [winnerId], references: [id], onDelete: Cascade)
+  recipientUser User? @relation("PayoutRecipients", fields: [recipientUserId], references: [id])
+  batch PayoutBatch? @relation(fields: [batchId], references: [id])
 
   @@index([status])
   @@index([winnerId])
+  @@index([batchId])
 }
 
 model Milestone {
@@ -956,4 +1016,57 @@ model NewsletterSubscriber {
   unsubscribedAt DateTime?
 
   @@index([unsubscribedAt])
+}
+
+// ── PayPal rail (PayPal AI Hackathon 2026 fork) ─────────────────────────
+
+/// A sponsor's pledge toward a PayPal-rail event. amountMinor is what the
+/// sponsor pays, platform fee included. The event goes LIVE when FUNDED
+/// pledges cover pool + fee (services/escrow/pledges.ts).
+model SponsorPledge {
+  id String @id @default(cuid())
+  eventId String
+  sponsorName String
+  sponsorEmail String
+  amountMinor Int
+  currency String @default("USD")
+  status PledgeStatus @default(PLEDGED)
+  /// Unguessable token in the public pay link (/fund/[payToken]).
+  payToken String @unique
+  paypalOrderId String? @unique
+  paypalCaptureId String? @unique
+  fundedAt DateTime?
+  rawCapture Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, status])
+}
+
+/// One PayPal Payouts batch. Its id is the PayPal sender_batch_id, so PayPal
+/// itself refuses a duplicate submission of the same batch.
+model PayoutBatch {
+  id String @id @default(cuid())
+  eventId String
+  status PayoutBatchStatus @default(PROPOSED)
+  currency String @default("USD")
+  totalMinor Int
+  paypalBatchId String? @unique
+  paypalBatchStatus String?
+  /// The payout agent's proposal (summary, flags) as shown to the approver.
+  proposal Json?
+  approvedById String?
+  approvedAt DateTime?
+  submittedAt DateTime?
+  completedAt DateTime?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  payouts Payout[]
+
+  @@index([eventId])
 }

@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
@@ -5,10 +6,26 @@ const rootDir = fileURLToPath(new URL("./", import.meta.url));
 
 export default defineConfig({
   test: {
-    include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx", "tests/integration/**/*.test.ts"],
     environment: "node",
     setupFiles: ["tests/integration/setup.ts"],
     testTimeout: 30_000,
+    // Unit files run in parallel. Integration files share one real Postgres
+    // and several services under test scan it globally (reconcileLedger,
+    // runMilestoneReminders, stale-webhook sweeps) while other suites delete
+    // their own fixtures, so they run one file at a time to stay
+    // deterministic. Measured: upstream main passed 8/8 runs in parallel;
+    // with the fork's extra suites the shared-DB races surfaced (2 of 7
+    // runs), and serial integration files passed every run.
+    projects: [
+      {
+        extends: true,
+        test: { name: "unit", include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"] },
+      },
+      {
+        extends: true,
+        test: { name: "integration", include: ["tests/integration/**/*.test.ts"], fileParallelism: false },
+      },
+    ],
     coverage: {
       provider: "v8",
       // Coverage gate is scoped to the money paths (audit); `pnpm test` stays

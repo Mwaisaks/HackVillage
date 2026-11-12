@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { execSync } from "node:child_process";
 
 /**
@@ -27,7 +28,9 @@ export function directDatabaseUrl(databaseUrl) {
   return url.toString();
 }
 
-if (process.env.VERCEL_ENV === "production") {
+// Render (the hackathon fork's host) sets RENDER=true on every build; its
+// single service owns its own database, so it always migrates.
+if (process.env.VERCEL_ENV === "production" || process.env.RENDER === "true") {
   const pooled = process.env.DATABASE_URL;
   if (!pooled) throw new Error("DATABASE_URL is required to migrate.");
   execSync("pnpm exec prisma migrate deploy --schema db/schema.prisma", {
@@ -35,5 +38,5 @@ if (process.env.VERCEL_ENV === "production") {
     env: { ...process.env, DATABASE_URL: directDatabaseUrl(pooled) },
   });
 } else {
-  console.log(`Skipping prisma migrate deploy (VERCEL_ENV=${process.env.VERCEL_ENV ?? "unset"}).`);
+  console.log(`Skipping prisma migrate deploy (VERCEL_ENV=${process.env.VERCEL_ENV ?? "unset"}, RENDER=${process.env.RENDER ?? "unset"}).`);
 }

@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 "use client";
 
 import { useActionState, useRef, useState } from "react";
@@ -13,10 +14,13 @@ import {
   eventBasicsSchema,
   eventProblemSchema,
   eventPrizesSchema,
+  prizeAmountIssue,
+  type PrizeCurrency,
   eventSettingsSchema,
   eventWizardSchema,
   placesAreUnique,
 } from "@/lib/events/validation";
+import { formatMoney } from "@/lib/money";
 import { formatKes } from "@/lib/utils";
 import { saveEventAction, type EventActionState } from "@/lib/events/actions";
 
@@ -35,6 +39,7 @@ export interface WizardDefaults {
   categories?: string[];
   maxTeams?: number;
   prizes?: { place: number; label: string; amountKes: number; milestoneRequired: boolean }[];
+  currency?: PrizeCurrency;
 }
 
 interface PrizeRow {
@@ -70,7 +75,19 @@ function toLocalInput(date?: Date): string {
     .slice(0, 16);
 }
 
-export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefaults; minPoolKes: number }) {
+export function EventWizard({
+  defaults,
+  minPoolKes,
+  minPoolUsd = 100,
+}: {
+  defaults?: WizardDefaults;
+  minPoolKes: number;
+  minPoolUsd?: number;
+}) {
+  const [currency, setCurrency] = useState<PrizeCurrency>(defaults?.currency ?? "KES");
+  const isUsd = currency === "USD";
+  const formatPool = (amount: number) => (isUsd ? formatMoney(amount * 100, "USD") : formatKes(amount));
+  const minPool = isUsd ? minPoolUsd : minPoolKes;
   const [state, action, pending] = useActionState<EventActionState, FormData>(saveEventAction, {});
   const [step, setStep] = useState(0);
   const [stepError, setStepError] = useState<string | null>(null);
@@ -130,7 +147,8 @@ export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefault
         place: p.place,
         label: p.label.trim(),
         amountKes: Number(p.amount),
-        milestoneRequired: p.milestoneRequired,
+        // PayPal events pay 100% on the day (HACKATHON.md decision 5).
+        milestoneRequired: isUsd ? false : p.milestoneRequired,
       }));
 
   /** First problem on a step, or null when the step passes the server's schema. */
@@ -170,9 +188,11 @@ export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefault
         const halfFilled = prizes.some(
           (p) => Boolean(p.label.trim()) !== Boolean(Number(p.amount) > 0)
         );
-        if (halfFilled) return "Finish or remove the half-filled prize row: label and KES amount.";
-        const parsed = eventPrizesSchema.safeParse({ prizes: completePrizes() });
+        if (halfFilled) return `Finish or remove the half-filled prize row: label and ${currency} amount.`;
+        const parsed = eventPrizesSchema.safeParse({ currency, prizes: completePrizes() });
         if (!parsed.success) return parsed.error.issues[0]?.message ?? "Check the prizes.";
+        const floor = prizeAmountIssue(currency, parsed.data.prizes);
+        if (floor) return floor;
         if (!placesAreUnique(parsed.data.prizes)) {
           return "Prize places must be unique: 1st, 2nd, 3rd…";
         }
@@ -202,6 +222,7 @@ export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefault
       rules: fieldValue("rules") || undefined,
       rolesWanted: fieldValue("rolesWanted") || undefined,
       prizes: completePrizes(),
+      currency,
       maxTeams: fieldValue("maxTeams"),
     });
     if (!parsed.success) {
@@ -258,6 +279,7 @@ export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefault
         <input type="hidden" name="venueType" value={venueType} />
         <input type="hidden" name="categories" value={categories.join(",")} />
         <input type="hidden" name="prizes" value={JSON.stringify(completePrizes())} />
+        <input type="hidden" name="currency" value={currency} />
 
         {/* Step 1 — Basics */}
         <div className={visible(0)}>
@@ -364,10 +386,29 @@ export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefault
           <Card className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-ink">Prize breakdown</p>
-              <Badge variant={total >= minPoolKes ? "success" : "warning"}>
-                {formatKes(total)} / min {formatKes(minPoolKes)}
+              <Badge variant={total >= minPool ? "success" : "warning"}>
+                {formatPool(total)} / min {formatPool(minPool)}
               </Badge>
             </div>
+            <fieldset className="flex flex-wrap items-center gap-2 text-sm">
+              <legend className="sr-only">Prize currency</legend>
+              {(["KES", "USD"] as const).map((option) => (
+                <label
+                  key={option}
+                  className={`flex cursor-pointer items-center gap-2 rounded-control border px-3 py-2 ${currency === option ? "border-ink font-semibold text-ink" : "border-ink/15 text-muted"}`}
+                >
+                  <input
+                    type="radio"
+                    name="currencyChoice"
+                    value={option}
+                    checked={currency === option}
+                    onChange={() => setCurrency(option)}
+                    className="accent-ink"
+                  />
+                  {option === "KES" ? "KES via Paystack" : "USD via PayPal (global sponsors)"}
+                </label>
+              ))}
+            </fieldset>
             <div className="space-y-3">
               {prizes.map((prize, index) => (
                 <div key={index} className="grid grid-cols-[3rem_1fr_9rem_auto] items-end gap-2">
@@ -380,8 +421,8 @@ export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefault
                     <Input id={`label-${index}`} value={prize.label} onChange={(e) => setPrize(index, { label: e.target.value })} placeholder="1st place" maxLength={60} />
                   </div>
                   <div>
-                    <Label htmlFor={`amount-${index}`} className="text-xs">KES</Label>
-                    <Input id={`amount-${index}`} type="number" min={1000} step={500} value={prize.amount} onChange={(e) => setPrize(index, { amount: e.target.value })} placeholder="250000" />
+                    <Label htmlFor={`amount-${index}`} className="text-xs">{currency}</Label>
+                    <Input id={`amount-${index}`} type="number" min={isUsd ? 10 : 1000} step={isUsd ? 1 : 500} value={prize.amount} onChange={(e) => setPrize(index, { amount: e.target.value })} placeholder={isUsd ? "1000" : "250000"} />
                   </div>
                   <button
                     type="button"
@@ -392,7 +433,7 @@ export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefault
                   >
                     <Trash2 aria-hidden className="size-4" />
                   </button>
-                  <label className="col-span-4 flex items-center gap-2 text-xs text-muted">
+                  <label className={`col-span-4 items-center gap-2 text-xs text-muted ${isUsd ? "hidden" : "flex"}`}>
                     <input
                       type="checkbox"
                       checked={prize.milestoneRequired}
@@ -415,8 +456,9 @@ export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefault
               <Plus aria-hidden className="size-4" /> Add place
             </Button>
             <p className="text-xs text-muted">
-              The prize pool is the sum of all places. It is deposited in full before the hackathon
-              goes live, plus a 5% organizer platform fee at deposit time.
+              {isUsd
+                ? "The prize pool is the sum of all places. Sponsors fund it through PayPal, plus a 5% platform fee, before the hackathon goes live. Winners are paid in full on the day, each team member to their own PayPal account."
+                : "The prize pool is the sum of all places. It is deposited in full before the hackathon goes live, plus a 5% organizer platform fee at deposit time."}
             </p>
           </Card>
         </div>
@@ -445,7 +487,7 @@ export function EventWizard({ defaults, minPoolKes }: { defaults?: WizardDefault
               hackathon page. Until then it uses a photo that matches its first category.
             </p>
             <dl className="grid gap-2 rounded-control bg-paper p-4 text-sm">
-              <div className="flex justify-between"><dt className="text-muted">Prize pool</dt><dd className="font-bold text-ink">{formatKes(total)}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted">Prize pool</dt><dd className="font-bold text-ink">{formatPool(total)}</dd></div>
               <div className="flex justify-between"><dt className="text-muted">Prize places</dt><dd className="font-semibold text-ink">{prizes.filter((p) => Number(p.amount) > 0).length}</dd></div>
               <div className="flex justify-between gap-4"><dt className="text-muted">Categories</dt><dd className="text-right font-semibold text-ink">{categories.length > 0 ? categories.map((key) => HACKATHON_CATEGORIES.find((c) => c.key === key)?.label ?? key).join(", ") : "None yet"}</dd></div>
               <div className="flex justify-between"><dt className="text-muted">Venue</dt><dd className="font-semibold text-ink capitalize">{venueType.toLowerCase()}</dd></div>

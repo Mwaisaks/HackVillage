@@ -1,8 +1,10 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 
+import { PledgeManager } from "@/components/escrow/pledge-manager";
 import { FundVaultForm } from "@/components/escrow/vault-forms";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +51,11 @@ export default async function VaultPage({
 
   const membership = event.org.members[0];
   if (!membership || membership.role === "MEMBER") notFound();
+
+  // PayPal-rail events are funded by sponsor pledges (HACKATHON.md F2).
+  if (event.rail === "PAYPAL") {
+    return <PledgeManager event={event} kybVerified={event.org.kycStatus === "VERIFIED"} />;
+  }
 
   const declaredPool = event.prizes.reduce((sum, prize) => sum + prize.amountKes, 0);
   const succeededPool = event.deposits

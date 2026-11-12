@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,6 +15,7 @@ import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { coverFor } from "@/lib/events/covers";
 import { STATUS_LABELS } from "@/lib/events/lifecycle";
+import { formatMoney } from "@/lib/money";
 import { formatKes } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Hackathon Command Center" };
@@ -62,6 +64,11 @@ export default async function EventCommandCenterPage({ params }: PageProps) {
   if (!membership) notFound();
 
   const poolKes = event.prizes.reduce((sum, prize) => sum + prize.amountKes, 0);
+  // PayPal events keep *Kes at 0 (HACKATHON.md decision 1): show their USD amounts.
+  const isPayPal = event.rail === "PAYPAL";
+  const poolMinor = event.prizes.reduce((sum, prize) => sum + (prize.amountMinor ?? 0), 0);
+  const poolLabel = isPayPal ? formatMoney(poolMinor, "USD") : formatKes(poolKes);
+  const feeLabel = isPayPal ? formatMoney(Math.round(poolMinor * 0.05), "USD") : formatKes(Math.round(poolKes * 0.05));
   const isDraft = event.status === "DRAFT";
 
   return (
@@ -94,9 +101,9 @@ export default async function EventCommandCenterPage({ params }: PageProps) {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">Prize pool</p>
-          <p className="mt-1 font-display text-2xl font-bold text-ink">{formatKes(poolKes)}</p>
+          <p className="mt-1 font-display text-2xl font-bold text-ink">{poolLabel}</p>
           <p className="mt-1 text-xs text-muted">
-            + 5% platform fee ({formatKes(Math.round(poolKes * 0.05))}) due at deposit
+            + 5% platform fee ({feeLabel}) {isPayPal ? "funded by sponsors" : "due at deposit"}
           </p>
         </Card>
         <Card>
@@ -121,14 +128,16 @@ export default async function EventCommandCenterPage({ params }: PageProps) {
       ) : event.status === "PENDING_DEPOSIT" ? (
         <Card className="border-warning/40">
           <CardTitle className="flex items-center gap-2">
-            <Lock aria-hidden className="size-5 text-warning" /> Waiting On The Prize Vault
+            <Lock aria-hidden className="size-5 text-warning" />{" "}
+            {isPayPal ? "Waiting On Sponsor Funding" : "Waiting On The Prize Vault"}
           </CardTitle>
           <CardDescription>
-            This hackathon isn&apos;t public yet. Fund the vault ({formatKes(poolKes)} pool + 5%
-            fee) and it goes live on HackVillage the moment the deposit confirms.
+            {isPayPal
+              ? `This hackathon isn't public yet. Sponsors fund the prize pool (${poolLabel} + 5% fee) through PayPal, and it goes live the moment the last pledge is paid.`
+              : `This hackathon isn't public yet. Fund the vault (${poolLabel} pool + 5% fee) and it goes live on HackVillage the moment the deposit confirms.`}
           </CardDescription>
           <Link href={`/organizer/hackathons/${event.slug}/vault`} className="mt-4 inline-block">
-            <Button arrow>Open The Prize Vault</Button>
+            <Button arrow>{isPayPal ? "Manage Sponsor Pledges" : "Open The Prize Vault"}</Button>
           </Link>
         </Card>
       ) : null}
@@ -166,6 +175,20 @@ export default async function EventCommandCenterPage({ params }: PageProps) {
         </Card>
       )}
 
+      {event.rail === "PAYPAL" && (
+        <Card>
+          <CardTitle>Money Dashboard</CardTitle>
+          <CardDescription>
+            Every sponsor pledge and every member payout in one table, with filtering and CSV export.
+          </CardDescription>
+          <div className="mt-4">
+            <Link href={`/organizer/hackathons/${event.slug}/money`}>
+              <Button variant="secondary" arrow>Open Money Dashboard</Button>
+            </Link>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <CardTitle>Problem Statement</CardTitle>
         <p className="mt-2 whitespace-pre-line text-sm leading-6 text-muted">
@@ -177,9 +200,11 @@ export default async function EventCommandCenterPage({ params }: PageProps) {
               {event.prizes.map((prize) => (
                 <tr key={prize.id} className="border-b border-ink/5 last:border-0">
                   <td className="py-2 font-semibold text-ink">{prize.label}</td>
-                  <td className="py-2 text-right font-semibold">{formatKes(prize.amountKes)}</td>
+                  <td className="py-2 text-right font-semibold">
+                    {isPayPal ? formatMoney(prize.amountMinor ?? 0, "USD") : formatKes(prize.amountKes)}
+                  </td>
                   <td className="py-2 pl-3 text-right text-xs text-muted">
-                    {prize.milestoneRequired ? "milestone on final 50%" : "full payout on win"}
+                    {prize.milestoneRequired && !isPayPal ? "milestone on final 50%" : "full payout on win"}
                   </td>
                 </tr>
               ))}

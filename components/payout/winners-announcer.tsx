@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 "use client";
 
 import { useMemo, useState } from "react";
@@ -14,6 +15,8 @@ interface PrizeOption {
   place: number;
   label: string;
   amountKes: number;
+  /** Pre-formatted amount for PayPal (USD) prizes. */
+  display?: string;
   milestoneRequired: boolean;
 }
 
@@ -36,11 +39,14 @@ export function WinnersAnnouncer({
   prizes,
   teams,
   poolKes,
+  paypal = false,
 }: {
   eventId: string;
   prizes: PrizeOption[];
   teams: TeamOption[];
   poolKes: number;
+  /** PayPal rail: announcing moves no money; payouts follow agent review + approval. */
+  paypal?: boolean;
 }) {
   const [state, setState] = useState<PayoutActionState>({});
   const [selection, setSelection] = useState<Record<number, string>>({});
@@ -54,9 +60,9 @@ export function WinnersAnnouncer({
     .map((prize) => ({ place: prize.place, teamId: selection[prize.place] }))
     .filter((p): p is { place: number; teamId: string } => Boolean(p.teamId));
 
-  const missingRecipients = placements
-    .map((p) => teams.find((t) => t.teamId === p.teamId))
-    .filter((t) => t && !t.leaderHasRecipient);
+  const missingRecipients = paypal
+    ? []
+    : placements.map((p) => teams.find((t) => t.teamId === p.teamId)).filter((t) => t && !t.leaderHasRecipient);
 
   const ready = placements.length === prizes.length && missingRecipients.length === 0;
 
@@ -73,11 +79,12 @@ export function WinnersAnnouncer({
     <div className="space-y-6">
       <Card>
         <CardTitle className="flex items-center gap-2">
-          <Trophy aria-hidden className="size-5" /> Announce Winners &amp; Pay 50%
+          <Trophy aria-hidden className="size-5" /> {paypal ? "Announce Winners" : "Announce Winners & Pay 50%"}
         </CardTitle>
         <CardDescription>
-          Announcing creates the instant payout records and starts the transfers immediately.
-          Winners see money the same day. The final 50% waits for milestone confirmation.
+          {paypal
+            ? "Announcing records the winners and tells every team member. No money moves yet: next, the payout agent checks each member's PayPal details against the team's split, and you approve one PayPal batch that pays everyone in full."
+            : "Announcing creates the instant payout records and starts the transfers immediately. Winners see money the same day. The final 50% waits for milestone confirmation."}
         </CardDescription>
 
         <div className="mt-5 space-y-4">
@@ -89,7 +96,7 @@ export function WinnersAnnouncer({
                 </Label>
                 <div className="flex items-center gap-2">
                   <span className="font-display text-lg font-bold text-ink">
-                    {formatKes(prize.amountKes)}
+                    {prize.display ?? formatKes(prize.amountKes)}
                   </span>
                   <Badge variant={prize.milestoneRequired ? "neutral" : "success"}>
                     {prize.milestoneRequired ? "50/50" : "full on the day"}
@@ -110,7 +117,7 @@ export function WinnersAnnouncer({
                     {team.rank ? `#${team.rank} ` : ""}
                     {team.name} · {team.members}
                     {team.score != null ? ` · score ${team.score.toFixed(2)}` : " · unscored"}
-                    {team.leaderHasRecipient ? "" : " · payout method missing"}
+                    {paypal || team.leaderHasRecipient ? "" : " · payout method missing"}
                   </option>
                 ))}
               </select>
@@ -130,12 +137,16 @@ export function WinnersAnnouncer({
 
         <ConfirmMoneyAction
           className="mt-5"
-          amountKes={poolKes}
+          amountKes={paypal ? 0 : poolKes}
           confirmWord="ANNOUNCE"
-          title="Announce winners and trigger the instant payouts?"
-          description="This announces the selected winners and starts the instant 50% transfers immediately. It cannot be undone."
-          confirmLabel="Announce Winners & Trigger Instant Payouts"
-          triggerLabel="Announce Winners & Trigger Instant Payouts"
+          title={paypal ? "Announce these winners?" : "Announce winners and trigger the instant payouts?"}
+          description={
+            paypal
+              ? "This announces the selected winners and notifies every team member. Payouts happen only after you approve the PayPal batch."
+              : "This announces the selected winners and starts the instant 50% transfers immediately. It cannot be undone."
+          }
+          confirmLabel={paypal ? "Announce Winners" : "Announce Winners & Trigger Instant Payouts"}
+          triggerLabel={paypal ? "Announce Winners" : "Announce Winners & Trigger Instant Payouts"}
           triggerDisabled={!ready}
           onConfirm={announce}
         />

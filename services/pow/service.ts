@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import { prisma } from "@/lib/db";
 import { sendNotification } from "@/lib/notifications/send";
 import {
@@ -164,7 +165,7 @@ export async function computePowMetrics(developerId: string): Promise<PowMetrics
     }),
     prisma.winner.findMany({
       where: { userId: developerId },
-      select: { amountKes: true },
+      select: { amountKes: true, amountMinor: true, currency: true },
     }),
     prisma.endorsement.count({
       where: { developerId, visibility: "PUBLISHED" },
@@ -173,7 +174,8 @@ export async function computePowMetrics(developerId: string): Promise<PowMetrics
   ]);
 
   const winCount = wins.length;
-  const totalWonKes = wins.reduce((sum, win) => sum + win.amountKes, 0);
+  // KES total only: PayPal (USD) wins hold amountKes 0, so they are excluded here.
+  const totalWonKes = wins.reduce((sum, win) => sum + (win.currency === "KES" ? win.amountKes : 0), 0);
   return {
     eventsParticipated: participated,
     wins: winCount,

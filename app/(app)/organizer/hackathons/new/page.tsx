@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
@@ -28,7 +29,10 @@ export default async function NewEventPage() {
           after it&apos;s locked in the Prize Vault.
         </p>
       </header>
-      <EventWizard minPoolKes={getEnv().MIN_PRIZE_POOL_KES} />
+      <EventWizard
+        minPoolKes={getEnv().MIN_PRIZE_POOL_KES}
+        minPoolUsd={getEnv().MIN_PRIZE_POOL_USD_MINOR / 100}
+      />
     </div>
   );
 }

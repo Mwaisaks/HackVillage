@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 /**
  * Dev utility — drive the seeded fintech event through judging → winners →
  * payouts, exercising the real service paths in simulation mode.
@@ -21,7 +22,8 @@ import { DEFAULT_RUBRIC } from "@/lib/judging/compute";
 import { computeEventResults } from "@/services/judging/results";
 
 async function main(): Promise<void> {
-  const slug = process.argv[2] ?? "fintech-for-matatu-culture";
+  // First non-flag argument: pnpm 11 forwards a literal "--" before script args.
+  const slug = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "fintech-for-matatu-culture";
   const event = await prisma.event.findFirst({
     where: { slug },
     include: {
@@ -56,6 +58,17 @@ async function main(): Promise<void> {
     }
   }
   console.log(`✓ ${event.judges.length} judge(s) finalized ${event.teams.length} team(s)`);
+
+  // PayPal-rail events (F3): stop here. The organiser announces on the
+  // winners page, the payout agent runs its checks, and a human approves
+  // the PayPal batch — none of that is scripted.
+  if (event.rail === "PAYPAL") {
+    const { appUrl } = await import("@/lib/url");
+    console.log("✓ PayPal event: judging finalised. Announce and pay from:");
+    console.log(`  ${appUrl(`/organizer/hackathons/${event.slug}/winners`)}`);
+    await prisma.$disconnect();
+    process.exit(0);
+  }
 
   // 3. Recipient for team leaders lacking one.
   for (const team of event.teams) {

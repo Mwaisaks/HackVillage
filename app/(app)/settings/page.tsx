@@ -1,8 +1,10 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Metadata } from "next";
 
 import { AccountSettings } from "@/components/settings/account-settings";
 import { NotificationPreferences } from "@/components/settings/notification-preferences";
 import { PayoutMethodForm } from "@/components/payout/payout-method-form";
+import { PayPalHandleForm } from "@/components/payout/paypal-controls";
 import { requireUser } from "@/lib/auth/guards";
 import { prisma } from "@/lib/db";
 import { NOTIFICATION_CATEGORIES, type NotificationCategory } from "@/lib/notifications/types";
@@ -15,7 +17,7 @@ export default async function SettingsPage() {
   const [profile, preference] = await Promise.all([
     prisma.developerProfile.findUnique({
       where: { userId: user.id },
-      select: { payoutMethod: true, payoutRecipientCode: true },
+      select: { payoutMethod: true, payoutRecipientCode: true, paypalHandle: true },
     }),
     prisma.notificationPreference.findUnique({ where: { userId: user.id } }),
   ]);
@@ -38,6 +40,7 @@ export default async function SettingsPage() {
             : null
         }
       />
+      <PayPalHandleForm current={profile?.paypalHandle ?? null} />
       <NotificationPreferences current={currentPreferences} />
     </div>
   );

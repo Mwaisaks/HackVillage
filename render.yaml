@@ -1,0 +1,53 @@
+# Render Blueprint for the PayPal AI Hackathon 2026 fork (HACKATHON.md).
+# Zero spend: one FREE web service, no Render database (Postgres is Neon's
+# free tier, supplied through DATABASE_URL). `next start` runs
+# instrumentation.ts, which registers the pg-boss workers in-process, so no
+# separate worker is needed. An external uptime pinger hitting /api/health
+# keeps the free service (and therefore the worker) awake.
+# Migrations run during the build (scripts/migrate-if-production.mjs, RENDER=true).
+services:
+  - type: web
+    name: hackvillage-paypal
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build
+    startCommand: pnpm start
+    # Liveness only (no DB work); /api/health?full=1 is the deep readiness check.
+    healthCheckPath: /api/health
+    envVars:
+      # Non-secret settings.
+      - key: NODE_VERSION
+        value: "24"
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: AI_PROVIDER
+        value: groq
+      # Paystack (KES) stays simulated: the hackathon demo uses PayPal sandbox.
+      - key: PAYSTACK_ALLOW_SIMULATION_IN_PROD
+        value: "true"
+
+      # Everything below is entered by hand in the Render dashboard.
+      # Neon pooled connection string (host contains "-pooler").
+      - key: DATABASE_URL
+        sync: false
+      # Random string, at least 32 chars: `openssl rand -base64 32`.
+      - key: NEXTAUTH_SECRET
+        sync: false
+      # Both = the service URL, e.g. https://hackvillage-paypal.onrender.com.
+      # Set BEFORE the first build: NEXT_PUBLIC_APP_URL is inlined at build time.
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      # From the PayPal sandbox app's webhook for /api/webhooks/paypal.
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        sync: false

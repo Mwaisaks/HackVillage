@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
@@ -42,6 +43,7 @@ export default async function EditEventPage({
       </header>
       <EventWizard
         minPoolKes={getEnv().MIN_PRIZE_POOL_KES}
+        minPoolUsd={getEnv().MIN_PRIZE_POOL_USD_MINOR / 100}
         defaults={{
           eventId: event.id,
           title: event.title,
@@ -59,9 +61,11 @@ export default async function EditEventPage({
           prizes: event.prizes.map((prize) => ({
             place: prize.place,
             label: prize.label,
-            amountKes: prize.amountKes,
+            // USD events edit in whole dollars (amountMinor / 100).
+            amountKes: event.rail === "PAYPAL" ? Math.round((prize.amountMinor ?? 0) / 100) : prize.amountKes,
             milestoneRequired: prize.milestoneRequired,
           })),
+          currency: event.rail === "PAYPAL" ? "USD" : "KES",
         }}
       />
     </div>

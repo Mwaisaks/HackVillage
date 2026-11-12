@@ -1,3 +1,4 @@
+// Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka
 import Link from "next/link";
 import { Check, ChevronRight, Lock } from "lucide-react";
 
@@ -132,6 +133,8 @@ export interface PrizeRow {
   id: string;
   label: string;
   amountKes: number;
+  /// Pre-formatted amount for non-KES (PayPal) prizes.
+  display?: string;
   milestoneRequired: boolean;
   winner: { team: string; handle: string } | null;
   firstHalfPaid: boolean;
@@ -154,7 +157,7 @@ export function PrizeTable({ prizes }: { prizes: PrizeRow[] }) {
           {prizes.map((prize) => (
             <tr key={prize.id}>
               <th scope="row">{prize.label}</th>
-              <td className="hkd-table-amount">{formatKes(prize.amountKes)}</td>
+              <td className="hkd-table-amount">{prize.display ?? formatKes(prize.amountKes)}</td>
               <td>
                 {prize.milestoneRequired ? "50% on the day, 50% on milestone" : "100% on the day"}
               </td>
