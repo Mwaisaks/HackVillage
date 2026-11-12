@@ -186,7 +186,8 @@ about a minute to wake up. All passwords are `demopass123`.
 | Judge | `judge@hackvillage.dev` |
 
 To pay a sponsor pledge, log in at PayPal checkout with the sandbox buyer
-account `sb-l0b9k53855163@personal.example.com` (password: _TODO_).
+account `sb-l0b9k53855163@personal.example.com`, password `ev_:F7lQ` (a sandbox-only
+account; it holds no real money).
 Payouts go to the team members' sandbox accounts.
 
 Demo path: open the `paypal-agentic-demo` hackathon as the organiser, then go
