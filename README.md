@@ -34,7 +34,7 @@ _Trust-as-a-Service for Developers. Innovation-as-a-Service for Organizations._
 > Phenny Mwaisaka, with permission from the upstream author.
 >
 > **Live demo:** https://hackvillage-paypal.onrender.com (PayPal **sandbox** only)
-> &nbsp;·&nbsp; **Video:** _TODO: link_ &nbsp;·&nbsp; **Fork point:**
+> &nbsp;·&nbsp; **Video:** [Demo video (YouTube)](https://youtu.be/7spq0C-8PHs) &nbsp;·&nbsp; **Fork point:**
 > [`458420b`](https://github.com/CodeWithEugene/HackVillage/commit/458420b00e68910db31a3f2a4914dac8f9d03d3e)
 
 > **This is a sandbox demo.** No real money moves. A production version would
