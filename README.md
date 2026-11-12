@@ -1,3 +1,4 @@
+<!-- Modified for PayPal AI Hackathon 2026 by Phenny Mwaisaka -->
 <div align="center">
   <img src="./public/branding/HackVillage-Logo.gif" alt="HackVillage" height="72" />
   &nbsp;&nbsp;&nbsp;&nbsp;
@@ -26,8 +27,215 @@ _Trust-as-a-Service for Developers. Innovation-as-a-Service for Organizations._
 
 ---
 
+## PayPal AI Hackathon 2026 fork
+
+> **This fork** extends HackVillage into a global, PayPal-powered prize platform
+> with an AI payout agent. It was built for the PayPal AI Hackathon 2026 by
+> Phenny Mwaisaka, with permission from the upstream author.
+>
+> **Live demo:** https://hackvillage-paypal.onrender.com (PayPal **sandbox** only)
+> &nbsp;·&nbsp; **Video:** _TODO: link_ &nbsp;·&nbsp; **Fork point:**
+> [`458420b`](https://github.com/CodeWithEugene/HackVillage/commit/458420b00e68910db31a3f2a4914dac8f9d03d3e)
+
+> **This is a sandbox demo.** No real money moves. A production version would
+> hold pooled funds with a licensed custody partner. PayPal Payouts is not an
+> escrow service, so this fork talks about a "funded prize pool", not escrow.
+
+### The problem
+
+Hackathon prizes arrive months late, or never. We asked a developer who has
+won several African hackathons:
+
+> "The longest I waited was 11 months; the shortest was a day. Some prizes were
+> never paid. I always had to follow up, at least 3 times and often 5 or more.
+> The excuses were disbursement delays, payment partners and banks (especially
+> cross-border), organisers without the funds ready, or insisting on physical
+> cash. And the prize goes to the team leader, who has to split it and absorb
+> the transaction costs."
+
+### What it does
+
+1. **Sponsors fund the pool up front through PayPal.** An organiser adds
+   sponsors. Each one gets a pay link (PayPal Orders v2). A public funding bar
+   shows who has funded and who has only pledged. The event goes live only
+   when funded pledges cover the whole prize pool plus the platform fee.
+2. **Every team member gets paid directly.** Each member adds their own PayPal
+   email. The team's split must add up to exactly 100%. The platform pays the
+   fees, so the team leader no longer pays to share the prize.
+3. **An AI payout agent prepares the money movement and a human approves it.**
+   When winners are announced, deterministic checks run first. Then the agent
+   explains each problem in plain language, drafts reminder emails to members
+   with no payout details, and proposes the batch (or holds it). The organiser
+   reviews the proposal and clicks approve. Only then does PayPal Payouts send
+   one batch that pays every member. The agent never executes payments itself.
+4. **The agent reconciles afterwards.** It compares PayPal's batch and item
+   statuses with our records and flags any mismatch.
+5. **Organisers and sponsors can see where every dollar went.** An AG Grid
+   dashboard lists pledges against funded amounts, every payout item and its
+   PayPal status, and each member's amount, with filtering and CSV export.
+
+### Before and after
+
+| | Upstream HackVillage (before fork) | This fork |
+|---|---|---|
+| Currency and reach | KES only, Paystack, Kenya | Adds USD on PayPal for global events (KES path untouched) |
+| Who funds the pool | Organiser deposits alone | Several sponsors, each with a PayPal pay link and a public funding bar |
+| Who gets paid | The team leader only (ADR-013) | Every member, to their own PayPal account, with a split that must total 100% |
+| Who pays fees | The leader, when redistributing | The platform |
+| Payout preparation | Manual | AI agent runs pre-flight checks, explains problems, drafts reminders, proposes the batch |
+| Money movement | Paystack transfers | One PayPal Payouts batch, released only after an organiser approves it |
+| After payment | Webhooks | Webhooks plus an agent reconciliation report |
+| Visibility | Organiser pages | AG Grid money dashboard for organisers and sponsors |
+
+### Architecture
+
+```mermaid
+flowchart LR
+  S[Sponsors] -- pay link --> O[PayPal Orders v2<br/>create + capture]
+  O -- PAYMENT.CAPTURE.COMPLETED --> W[/api/webhooks/paypal<br/>signature verified/]
+  W --> P[(SponsorPledge<br/>FUNDED)]
+  P -- funded ≥ pool + fee --> L[Event LIVE<br/>prize pool locked]
+  L --> J[Judging → winners announced]
+  J --> F[Deterministic pre-flight<br/>services/payout/paypal-plan.ts]
+  F --> A[Payout agent<br/>Groq tool calling]
+  A -- explain / remind / propose --> UI[Organiser console]
+  UI -- human approves --> B[PayPal Payouts v1<br/>one batch, per member]
+  B -- PAYMENT.PAYOUTS-ITEM.* --> W
+  B --> R[Agent reconciliation report]
+  P & B --> G[AG Grid money dashboard]
+```
+
+Every money path is idempotent. A batch uses our `PayoutBatch` id as PayPal's
+`sender_batch_id`, and each item uses our `Payout` id as `sender_item_id`. The
+idempotency key is `{winnerId}:{userId}:{tranche}`. Webhooks are replay-guarded
+by the PayPal event id. On any PayPal or network error, funds stay where they
+are and the state is explicit.
+
+### PayPal APIs used
+
+| API | Used for | Code |
+|---|---|---|
+| Orders v2 (create, capture) via `@paypal/paypal-server-sdk` | Sponsor pledges | `lib/ports/paypal.ts`, `services/escrow/pledges.ts` |
+| Payouts v1 (`POST /v1/payments/payouts`, get batch, get item) | Paying every team member in one batch | `lib/ports/paypal.ts`, `services/payout/paypal-payouts.ts` |
+| Webhooks (`/v1/notifications/verify-webhook-signature`) | Verifying `PAYMENT.CAPTURE.COMPLETED` and `PAYMENT.PAYOUTS-ITEM.*` | `app/api/webhooks/paypal/route.ts` |
+| OAuth 2.0 (`/v1/oauth2/token`) | Access tokens for the REST calls | `lib/ports/paypal.ts` |
+
+Without PayPal credentials, the port runs a `PayPalSimulation` with a local
+checkout page, so the app and the tests run without a PayPal account.
+
+### AI tools used, and how
+
+**In the product: the payout agent.**
+- **Provider and model:** Groq, model `openai/gpt-oss-120b`, through Groq's
+  OpenAI-compatible tool-calling API. Configured with `AI_PROVIDER`,
+  `AI_API_KEY` and `AI_MODEL` (`lib/ports/ai.ts`).
+- **Inputs:** a redacted view of the payout plan and the structured issues
+  from the deterministic pre-flight (amounts sum to the prize, split sums to
+  100%, every member has a payout handle, no duplicate recipients, nothing
+  over the review threshold, the pool covers the batch).
+- **Tools:** `explain_issue`, `draft_reminder`, `propose_batch`, `hold_batch`,
+  and `report_reconciliation` after a batch. Our server validates every tool
+  argument (`services/agent/payout-agent.ts`).
+- **Safety:**
+  - The agent cannot move money. A proposal does nothing until an organiser
+    approves it in the UI.
+  - Every agent run and every approval is written to the AuditLog.
+  - If there is no key, or the provider fails, a rules-only responder produces
+    the same kind of result, so the organiser is never blocked.
+
+**While building:**
+- **Claude Code** (Anthropic, Claude Opus models) helped with planning,
+  writing code and tests, and reviewing changes.
+- **APIMatic Context Plugin** (the PayPal TypeScript skills, loaded into Claude
+  Code) grounded the assistant in the real PayPal Server SDK source. We used it
+  to audit our Orders v2 integration against the SDK's generated defaults:
+  - **Timeouts:** the SDK ships with `timeout: 0` (wait forever). We set 10s
+    per attempt.
+  - **Retries:** they are off by default (`maxNumberOfRetries: 0` and
+    `maximumRetryWaitTime: 0`). We turned on bounded retries for GET and POST.
+    Retrying POST is safe only because every create and capture carries a
+    `PayPal-Request-Id`, which we checked against the sandbox: the same id
+    returns the same order.
+  - **Errors:** every Orders operation throws the typed `CustomError`. Our error
+    mapping now keeps PayPal's issue code and `debug_id`, for example
+    `404 RESOURCE_NOT_FOUND/INVALID_RESOURCE_ID, debug_id …`.
+
+### Sponsor tools
+
+- **AG Grid Community** powers the money dashboard:
+  - organisers: `/organizer/hackathons/[slug]/money`
+  - sponsors: `/fund/[payToken]/dashboard`, with recipient handles masked
+- **APIMatic:** PayPal's official Node SDK (`@paypal/paypal-server-sdk`, which
+  runs every sponsor pledge through Orders v2) is generated by APIMatic and runs
+  on the `@apimatic/*` runtime. We used the APIMatic Context Plugin to harden
+  that integration (see above).
+- **Render** hosts the live demo on a free web service, with Neon Postgres.
+
+### Try it: sandbox test logins
+
+Open https://hackvillage-paypal.onrender.com/signin. The free service may take
+about a minute to wake up. All passwords are `demopass123`.
+
+| Role | Email |
+|---|---|
+| Organiser | `organizer@hackvillage.dev` |
+| Team Lumen (leader) | `amina@paypal-demo.dev` |
+| Team Lumen | `brian@paypal-demo.dev` |
+| Team Lumen (no PayPal email yet, on purpose) | `chidi@paypal-demo.dev` |
+| Solo team | `zawadi@paypal-demo.dev` |
+| Judge | `judge@hackvillage.dev` |
+
+To pay a sponsor pledge, log in at PayPal checkout with the sandbox buyer
+account `sb-l0b9k53855163@personal.example.com` (password: _TODO_).
+Payouts go to the team members' sandbox accounts.
+
+Demo path: open the `paypal-agentic-demo` hackathon as the organiser, then go
+to **Winners** → announce → run the payout agent → approve → watch the batch
+settle. Then open **Money** to see the AG Grid dashboard.
+
+### Run it locally
+
+```bash
+pnpm install
+cp .env.example .env      # then blank the placeholder Paystack/chain keys for simulation
+pnpm run db:migrate && pnpm run db:seed
+pnpm run dev:paypal-demo -- --reset          # USD event, three funded sponsors, two teams
+pnpm run dev:cycle -- paypal-agentic-demo    # finalise judging
+pnpm dev
+```
+
+Add `PAYPAL_CLIENT_ID`/`PAYPAL_CLIENT_SECRET` (sandbox) and `AI_API_KEY` to use
+the real PayPal sandbox and Groq. Leave them blank to use the simulations.
+`pnpm typecheck && pnpm lint && pnpm test` runs the full suite against a real
+Postgres.
+
+### Limitations
+
+- **Sandbox only.** All PayPal amounts are USD, and every recipient must be a
+  sandbox account.
+- **Custody.** Pooled funds sit in the platform's PayPal sandbox account. A real
+  launch needs a licensed custody partner.
+- **Tax.** Kenyan prize-money withholding tax (and tax elsewhere) is not handled.
+- **Single tranche.** PayPal events pay 100% on the day. The 50/50
+  milestone tranches remain KES-only.
+- **No on-chain record for PayPal events.** Polygon attestations are skipped
+  for them.
+- **Refunds are manual.** Overpayments and refunds alert admins, who handle
+  them by hand.
+
+### Credits
+
+- **Upstream:** [HackVillage](https://github.com/CodeWithEugene/HackVillage)
+  by Eugene Mutembei and Technetium Kenya, Apache-2.0. Thank you for permission
+  to build on it.
+- **Fork:** Phenny Mwaisaka ([@Mwaisaks](https://github.com/Mwaisaks)).
+- The rest of this README describes upstream HackVillage.
+
+---
+
 ## Table of Contents
 
+- [PayPal AI Hackathon 2026 fork](#paypal-ai-hackathon-2026-fork)
 - [Mission](#mission)
 - [The Problem](#the-problem)
 - [The HackVillage Standard](#the-hackvillage-standard)
